@@ -503,7 +503,7 @@ function accessibleName(el: Element, build: Build): string {
   const title = el.getAttribute('title');
   if (title) return title;
   // A control whose only label is visually hidden, for example an icon button.
-  return collapse(el.textContent ?? '').slice(0, 80);
+  return textOf(el, build, true).slice(0, 80);
 }
 
 /** aria-labelledby, then aria-label. */
@@ -523,12 +523,17 @@ function labelOf(el: Element, build: Build): string {
 
 /** The text a sighted user sees inside `el`, with whitespace collapsed. */
 function visibleText(el: Element, build: Build): string {
+  return textOf(el, build, false);
+}
+
+/** With `withHidden`, visually hidden text is read too; aria-hidden text never is. */
+function textOf(el: Element, build: Build, withHidden: boolean): string {
   const parts: string[] = [];
-  collectText(el, build, parts);
+  collectText(el, build, parts, withHidden);
   return collapse(parts.join(''));
 }
 
-function collectText(node: Node, build: Build, parts: string[]): void {
+function collectText(node: Node, build: Build, parts: string[], withHidden: boolean): void {
   for (const child of node.childNodes) {
     if (child.nodeType === Node.TEXT_NODE) {
       parts.push(child.nodeValue ?? '');
@@ -537,14 +542,14 @@ function collectText(node: Node, build: Build, parts: string[]): void {
       const tag = el.localName;
       if (tag === 'br') parts.push(' ');
       if (NOT_TEXT_TAGS.has(tag) || el.getAttribute('aria-hidden') === 'true') continue;
-      if (isHidden(el, build)) continue;
+      if (!withHidden && isHidden(el, build)) continue;
       if (tag === 'img') {
         parts.push(` ${el.getAttribute('alt') ?? ''} `);
         continue;
       }
       const block = BLOCK_TAGS.has(tag);
       if (block) parts.push(' ');
-      collectText(el, build, parts);
+      collectText(el, build, parts, withHidden);
       if (block) parts.push(' ');
     }
   }

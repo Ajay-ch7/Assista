@@ -9,11 +9,23 @@ from app.voice.base import SpeechToText, TextToSpeech
 
 
 class MockSpeechToText(SpeechToText):
-    """Treats the audio bytes as UTF-8 text, so a test can "say" a sentence."""
+    """Lets a test "say" a sentence by sending it as UTF-8 bytes in place of audio.
+
+    Real audio, such as a browser's fake microphone, is heard as DEFAULT_TRANSCRIPT.
+    No audio, or only whitespace, is heard as silence.
+    """
+
+    DEFAULT_TRANSCRIPT = "what is this page?"
 
     async def transcribe(self, audio: AsyncIterator[bytes], fmt: AudioFormat) -> str:
         data = b"".join([chunk async for chunk in audio])
-        return data.decode("utf-8", errors="ignore").strip()
+        if not data.strip():
+            return ""
+        try:
+            text = data.decode("utf-8")
+        except UnicodeDecodeError:
+            return self.DEFAULT_TRANSCRIPT
+        return text.strip() if text.isprintable() else self.DEFAULT_TRANSCRIPT
 
 
 class MockTextToSpeech(TextToSpeech):

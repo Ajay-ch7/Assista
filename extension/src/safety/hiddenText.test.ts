@@ -100,7 +100,7 @@ describe('snapshot: hidden text is stripped and counted', () => {
 
   it('does not hide an icon button whose label is visually hidden', () => {
     document.body.innerHTML = `
-      <button><span style="position:absolute; clip:rect(0,0,0,0)">Open menu</span></button>`;
+      <button><span aria-hidden="true">?</span><span style="position:absolute; clip:rect(0,0,0,0)">Open menu</span></button>`;
     const [button] = buildSnapshot(document).nodes;
     expect(button).toMatchObject({ role: 'button', name: 'Open menu' });
   });
