@@ -2,6 +2,7 @@
 // fields in document order, each with a short reference id.
 
 import { isHiddenElement } from '../safety/hiddenText';
+import { NavigationMemory, clutterKind } from './clutter';
 import { isSensitiveField } from '../safety/redaction';
 import type {
   NodeState,
@@ -171,6 +172,8 @@ interface Build {
   nextId: { e: number; t: number; i: number };
   textBudget: number;
   hiddenRemoved: number;
+  clutterRemoved: number;
+  navigation: NavigationMemory;
   hiddenCache: WeakMap<Element, boolean>;
 }
 
@@ -198,6 +201,8 @@ export function buildSnapshot(doc: Document = document): PageSnapshot {
     nextId: { e: 0, t: 0, i: 0 },
     textBudget: MAX_TOTAL_TEXT,
     hiddenRemoved: 0,
+    clutterRemoved: 0,
+    navigation: new NavigationMemory(),
     hiddenCache: new WeakMap(),
   };
   if (doc.body) walkChildren(doc.body, false, build);
@@ -215,7 +220,7 @@ export function buildSnapshot(doc: Document = document): PageSnapshot {
     flags: {
       has_canvas: doc.querySelector('canvas') !== null,
       thin: false,
-      clutter_removed: 0,
+      clutter_removed: build.clutterRemoved,
       hidden_text_removed: build.hiddenRemoved,
     },
   };
@@ -249,6 +254,10 @@ function visit(el: Element, inText: boolean, build: Build): void {
   }
 
   const role = roleOf(el);
+  if (clutterKind(el, role, build.navigation)) {
+    build.clutterRemoved++;
+    return;
+  }
   if (role === 'img') {
     addImage(el, build);
     return;
