@@ -16,8 +16,10 @@ from typing import Any
 from fastapi import FastAPI, WebSocket
 from pydantic import BaseModel, ValidationError
 
-from app.agents.page_answer import answer_from_page
+from app.agents.base import SessionMemory, TurnContext
+from app.agents.team import Team
 from app.config import ProviderNotConfigured, Settings
+from app.errors import TurnError
 from app.llm.base import LLMClient
 from app.llm.gateway import create_llm
 from app.protocol import (
@@ -46,41 +48,23 @@ from app.voice.sentences import SentenceSplitter
 log = logging.getLogger("assista")
 
 
-class TurnError(Exception):
-    """Ends the turn with a sentence the user will hear."""
-
-    def __init__(self, code: str, message: str) -> None:
-        super().__init__(message)
-        self.code = code
-        self.message = message
-
-
-@dataclass(frozen=True)
-class TurnContext:
-    """What a responder needs to answer one request."""
-
-    text: str
-    snapshot: PageSnapshot
-    verbosity: Verbosity
-    private_mode: bool
-
-
 Responder = Callable[[TurnContext], AsyncIterator[str]]
 """Answers one request as a stream of text pieces."""
 
 
 def model_responder(settings: Settings, llm: LLMClient | None = None) -> Responder:
-    """Answers from the page snapshot with the configured model."""
-    client = llm
+    """Answers with the router and its specialists, on the configured model."""
+    team: Team | None = None
 
     async def respond(ctx: TurnContext) -> AsyncIterator[str]:
-        nonlocal client
-        if client is None:
-            client = create_llm(settings)
-        pieces = answer_from_page(
-            client, ctx.text, ctx.snapshot, ctx.verbosity, model=settings.llm_model or None
-        )
-        async for piece in pieces:
+        nonlocal team
+        if team is None:
+            team = Team(
+                llm or create_llm(settings),
+                model=settings.llm_model or None,
+                router_model=settings.router_model or None,
+            )
+        async for piece in team.respond(ctx):
             yield piece
 
     return respond
@@ -117,6 +101,7 @@ class Session:
         self.deps = deps
         self.verbosity: Verbosity = "normal"
         self.private_mode = False
+        self.memory = SessionMemory()
         self._turn: asyncio.Task[None] | None = None
         # Microphone audio of the spoken turn in progress; None marks its end.
         self._audio: asyncio.Queue[bytes | None] | None = None
@@ -244,6 +229,7 @@ class Session:
             snapshot=snapshot,
             verbosity=self.verbosity,
             private_mode=self.private_mode,
+            memory=self.memory,
         )
 
         splitter = SentenceSplitter()
