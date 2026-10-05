@@ -191,6 +191,7 @@ async function changeSpeed(step: number): Promise<void> {
     );
     return;
   }
+  setStatus('Changing speed.', 'thinking');
   preferences = await savePreferences({ speed });
   player.rate = preferences.speed;
   answerLocally(step > 0 ? 'Faster.' : 'Slower.');

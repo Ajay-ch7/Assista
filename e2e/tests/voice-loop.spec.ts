@@ -57,7 +57,9 @@ test('the snapshot describes the page and holds back secrets and hidden text', a
   await ask(panel, 'what is this page?');
 
   const frames = sent.map((raw) => JSON.parse(raw) as SentFrame);
-  expect(frames.map((frame) => frame.type)).toEqual(['transcript', 'snapshot']);
+  // The panel tells the backend its preferences as soon as it connects.
+  expect(frames.map((frame) => frame.type)).toEqual(['settings', 'transcript', 'snapshot']);
+  frames.shift();
   const snapshot = frames[1].snapshot!;
 
   expect(snapshot.title).toBe('Trail Backpack 30L - Riverside Outfitters');
@@ -144,11 +146,13 @@ test('the held talk key reaches the panel from a page', async ({ context, openPa
     () =>
       new Promise<string[]>((resolve) => {
         const seen: string[] = [];
-        chrome.runtime.onMessage.addListener((msg: { to?: string; kind: string; phase?: string }) => {
-          if (msg.to !== 'panel') return;
-          seen.push(msg.phase ? `${msg.kind}:${msg.phase}` : msg.kind);
-          if (seen.length === 3) resolve(seen);
-        });
+        chrome.runtime.onMessage.addListener(
+          (msg: { to?: string; kind: string; phase?: string }) => {
+            if (msg.to !== 'panel') return;
+            seen.push(msg.phase ? `${msg.kind}:${msg.phase}` : msg.kind);
+            if (seen.length === 3) resolve(seen);
+          },
+        );
       }),
   );
 
