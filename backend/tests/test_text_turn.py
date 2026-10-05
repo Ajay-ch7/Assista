@@ -20,6 +20,7 @@ def test_text_turn_runs_from_transcript_to_done():
         "request_snapshot",
         "speak_text",
         "speak_text",
+        "speak_text",
         "done",
     ]
     assert result.of_type("transcript_final")[0]["text"] == "what is this page?"

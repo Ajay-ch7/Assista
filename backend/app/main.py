@@ -16,7 +16,10 @@ from typing import Any
 from fastapi import FastAPI, WebSocket
 from pydantic import BaseModel, ValidationError
 
+from app.agents.page_answer import answer_from_page
 from app.config import ProviderNotConfigured, Settings
+from app.llm.base import LLMClient
+from app.llm.gateway import create_llm
 from app.protocol import (
     AudioEnd,
     AudioFormat,
@@ -66,9 +69,21 @@ Responder = Callable[[TurnContext], AsyncIterator[str]]
 """Answers one request as a stream of text pieces."""
 
 
-async def placeholder_responder(ctx: TurnContext) -> AsyncIterator[str]:
-    """Stands in until the model gateway answers from the snapshot (P1.11)."""
-    yield f"I heard you. This page is titled {ctx.snapshot.title or 'untitled'}."
+def model_responder(settings: Settings, llm: LLMClient | None = None) -> Responder:
+    """Answers from the page snapshot with the configured model."""
+    client = llm
+
+    async def respond(ctx: TurnContext) -> AsyncIterator[str]:
+        nonlocal client
+        if client is None:
+            client = create_llm(settings)
+        pieces = answer_from_page(
+            client, ctx.text, ctx.snapshot, ctx.verbosity, model=settings.llm_model or None
+        )
+        async for piece in pieces:
+            yield piece
+
+    return respond
 
 
 @dataclass
@@ -76,10 +91,14 @@ class Deps:
     """Everything a session needs from outside; tests replace the parts they fake."""
 
     settings: Settings
-    respond: Responder = placeholder_responder
+    respond: Responder | None = None
     stt: SpeechToText | None = None
     tts: TextToSpeech | None = None
     snapshot_timeout: float = 10.0
+
+    def __post_init__(self) -> None:
+        if self.respond is None:
+            self.respond = model_responder(self.settings)
 
     def speech_to_text(self) -> SpeechToText:
         if self.stt is None:
@@ -179,6 +198,11 @@ class Session:
             await work
         except TurnError as error:
             await self._send_error(turn_id, error.code, error.message)
+        except ProviderNotConfigured as error:
+            log.error("not configured: %s", error)
+            await self._send_error(
+                turn_id, "not_configured", "The Assista server is not fully set up yet."
+            )
         except Exception:
             log.exception("turn %s failed", turn_id)
             await self._send_error(
@@ -188,14 +212,8 @@ class Session:
     async def _spoken_turn(
         self, turn_id: str, fmt: AudioFormat, queue: asyncio.Queue[bytes | None]
     ) -> None:
-        try:
-            stt = self.deps.speech_to_text()
-            tts = self.deps.text_to_speech()
-        except ProviderNotConfigured as error:
-            log.error("speech is not configured: %s", error)
-            raise TurnError(
-                "voice_not_configured", "Speech is not set up on the Assista server."
-            ) from error
+        stt = self.deps.speech_to_text()
+        tts = self.deps.text_to_speech()
 
         async def audio() -> AsyncIterator[bytes]:
             while (chunk := await queue.get()) is not None:

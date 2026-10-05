@@ -27,6 +27,7 @@ def test_spoken_turn_is_transcribed_and_answered_with_audio():
         "request_snapshot",
         "speak_text",
         "speak_text",
+        "speak_text",
         "done",
     ]
     assert all(m["audio"] == PCM_16K for m in result.of_type("speak_text"))
@@ -66,7 +67,7 @@ def test_silence_ends_in_a_spoken_error():
 def test_spoken_turn_without_providers_says_speech_is_not_set_up():
     with session() as client:
         result = client.say(b"hello")
-    assert result.error["code"] == "voice_not_configured"
+    assert result.error["code"] == "not_configured"
 
 
 def test_speech_to_text_failure_ends_in_a_spoken_error():

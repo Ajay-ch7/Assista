@@ -125,7 +125,7 @@ class TextModeClient:
 
 @contextmanager
 def session(deps: Deps | None = None, **overrides: Any) -> Iterator[TextModeClient]:
-    """Opens one WebSocket session against a fresh app."""
-    deps = deps or Deps(settings=Settings(), **overrides)
+    """Opens one WebSocket session against a fresh app, with the mock model."""
+    deps = deps or Deps(settings=Settings(llm_provider="mock"), **overrides)
     with TestClient(create_app(deps)) as client, client.websocket_connect("/ws") as ws:
         yield TextModeClient(ws)
