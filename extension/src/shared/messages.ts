@@ -8,17 +8,40 @@ export type TalkPhase = 'down' | 'up' | 'cancel';
 export type ToWorker =
   | { to: 'worker'; kind: 'talk_key'; phase: TalkPhase }
   | { to: 'worker'; kind: 'stop_key' }
-  | { to: 'worker'; kind: 'get_snapshot' };
+  | { to: 'worker'; kind: 'get_snapshot' }
+  | { to: 'worker'; kind: 'get_screenshot'; ref?: string };
 
 export type ToPanel =
   | { to: 'panel'; kind: 'talk_key'; phase: TalkPhase }
   | { to: 'panel'; kind: 'talk_toggle' }
   | { to: 'panel'; kind: 'stop_key' };
 
-export type ToContent = { to: 'content'; kind: 'build_snapshot' };
+export type ToContent =
+  | { to: 'content'; kind: 'build_snapshot' }
+  | { to: 'content'; kind: 'prepare_capture'; ref?: string }
+  | { to: 'content'; kind: 'end_capture' };
 
 export type Ack = { ok: true } | { ok: false; error: string };
 export type SnapshotReply = { ok: true; snapshot: PageSnapshot } | { ok: false; error: string };
+
+export interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** Where the element to crop sits in the viewport, in CSS pixels; null for the full view. */
+export interface CaptureFrame {
+  viewport: { width: number; height: number };
+  rect: Rect | null;
+}
+
+export type CaptureReply = ({ ok: true } & CaptureFrame) | { ok: false; error: string };
+
+/** A screenshot as base64 image data. */
+export type ScreenshotReply =
+  { ok: true; image: string; mime: string } | { ok: false; error: string };
 
 export function isAddressedTo<T extends 'worker' | 'panel' | 'content'>(
   msg: unknown,

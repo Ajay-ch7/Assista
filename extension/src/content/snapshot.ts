@@ -3,6 +3,7 @@
 
 import { isHiddenElement } from '../safety/hiddenText';
 import { NavigationMemory, clutterKind } from './clutter';
+import { isThin } from './thin';
 import { isSensitiveField } from '../safety/redaction';
 import type {
   NodeState,
@@ -173,6 +174,7 @@ interface Build {
   textBudget: number;
   hiddenRemoved: number;
   clutterRemoved: number;
+  imagesWithoutAlt: number;
   navigation: NavigationMemory;
   hiddenCache: WeakMap<Element, boolean>;
 }
@@ -192,6 +194,12 @@ export function resolveRef(snapshotId: string, ref: string): Element {
   return el;
 }
 
+/** Finds the element behind a reference id from the latest snapshot. */
+export function resolveLatestRef(ref: string): Element {
+  if (!current) throw new StaleRefError('There is no snapshot yet');
+  return resolveRef(current.id, ref);
+}
+
 export function buildSnapshot(doc: Document = document): PageSnapshot {
   const build: Build = {
     nodes: [],
@@ -202,6 +210,7 @@ export function buildSnapshot(doc: Document = document): PageSnapshot {
     textBudget: MAX_TOTAL_TEXT,
     hiddenRemoved: 0,
     clutterRemoved: 0,
+    imagesWithoutAlt: 0,
     navigation: new NavigationMemory(),
     hiddenCache: new WeakMap(),
   };
@@ -219,7 +228,7 @@ export function buildSnapshot(doc: Document = document): PageSnapshot {
     rules: { preticked: [], countdowns: [] },
     flags: {
       has_canvas: doc.querySelector('canvas') !== null,
-      thin: false,
+      thin: isThin(doc, build.nodes, build.images, build),
       clutter_removed: build.clutterRemoved,
       hidden_text_removed: build.hiddenRemoved,
     },
@@ -465,7 +474,8 @@ function addImage(el: Element, build: Build): void {
   if (width > 0 && height > 0 && width <= 2 && height <= 2) return;
   const ref = `i${++build.nextId.i}`;
   build.elements.set(ref, el);
-  const alt = el.getAttribute('alt') ?? el.getAttribute('aria-label') ?? '';
+  const alt = el.getAttribute('alt') ?? labelOf(el, build);
+  if (el.getAttribute('alt') === null && !alt) build.imagesWithoutAlt++;
   build.images.push({ ref, alt: clip(alt, MAX_NAME), width, height });
 }
 

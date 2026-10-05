@@ -2,7 +2,13 @@
 // is shut down when idle. Holds the microphone, the speaker and the backend WebSocket.
 
 import { DEFAULT_KEYS, HoldKeyMachine, attachHoldKey } from '../shared/holdKey';
-import { isAddressedTo, type Ack, type SnapshotReply, type ToWorker } from '../shared/messages';
+import {
+  isAddressedTo,
+  type Ack,
+  type ScreenshotReply,
+  type SnapshotReply,
+  type ToWorker,
+} from '../shared/messages';
 import type { AudioFormat, ServerMessage } from '../shared/protocol';
 import { cancelSay, say } from './localVoice';
 import { Mic } from './mic';
@@ -169,6 +175,9 @@ function onBackendMessage(msg: ServerMessage): void {
     case 'request_snapshot':
       void replyWithSnapshot(msg.turn_id);
       break;
+    case 'request_screenshot':
+      void replyWithScreenshot(msg.turn_id, msg.ref);
+      break;
     case 'speak_text':
       log('assistant', msg.text);
       player.startSentence();
@@ -207,6 +216,25 @@ async function replyWithSnapshot(turn: string): Promise<void> {
     reply.ok
       ? { type: 'snapshot', turn_id: turn, snapshot: reply.snapshot }
       : { type: 'snapshot', turn_id: turn, snapshot: null, error: reply.error },
+  );
+}
+
+async function replyWithScreenshot(turn: string, ref?: string): Promise<void> {
+  let reply: ScreenshotReply;
+  try {
+    reply = await chrome.runtime.sendMessage<ToWorker, ScreenshotReply>({
+      to: 'worker',
+      kind: 'get_screenshot',
+      ref,
+    });
+  } catch (error) {
+    reply = { ok: false, error: String(error) };
+  }
+  if (turn !== activeTurn) return;
+  socket.send(
+    reply.ok
+      ? { type: 'screenshot', turn_id: turn, image: reply.image, mime: reply.mime, ref }
+      : { type: 'screenshot', turn_id: turn, image: null, ref, error: reply.error },
   );
 }
 

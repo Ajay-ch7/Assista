@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Nila Studio</title>
+    <!-- Poor markup on purpose: no headings, no alt text, unlabeled icon buttons, a chart drawn on a canvas. -->
+    <style>
+      body {
+        font:
+          16px/1.4 system-ui,
+          sans-serif;
+        margin: 0;
+        background: #ffffff;
+        color: #1c1c1c;
+      }
+      .bar {
+        display: flex;
+        gap: 0.5rem;
+        padding: 0.75rem 1rem;
+        background: #1f3b4d;
+      }
+      .icon {
+        width: 32px;
+        height: 32px;
+        border: 0;
+        border-radius: 50%;
+        background: #f2c14e;
+        cursor: pointer;
+      }
+      .big {
+        font-size: 2rem;
+        font-weight: 700;
+        padding: 1rem;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, 240px);
+        gap: 1rem;
+        padding: 1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="bar">
+      <div class="icon" role="button" tabindex="0" onclick="void 0"></div>
+      <div class="icon" role="button" tabindex="0" onclick="void 0"></div>
+      <button class="icon"></button>
+    </div>
+    <div class="big">Nila Studio</div>
+    <div class="grid">
+      <img
+        width="240"
+        height="160"
+        src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='160'%3E%3Crect width='240' height='160' fill='%2387b5d6'/%3E%3Ccircle cx='180' cy='45' r='25' fill='%23f7d154'/%3E%3Cpath d='M0 160 L80 70 L150 160 Z' fill='%232f5d3a'/%3E%3C/svg%3E"
+      />
+      <img
+        width="240"
+        height="160"
+        src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='160'%3E%3Crect width='240' height='160' fill='%23f4e3c1'/%3E%3Crect x='70' y='40' width='100' height='90' rx='12' fill='%23c0392b'/%3E%3C/svg%3E"
+      />
+    </div>
+    <div>Bookings open</div>
+    <canvas id="visits" width="300" height="120"></canvas>
+    <script>
+      const ctx = document.getElementById('visits').getContext('2d');
+      [40, 70, 55, 100].forEach((h, i) => {
+        ctx.fillStyle = '#1f3b4d';
+        ctx.fillRect(20 + i * 70, 120 - h, 40, h);
+      });
+    </script>
+  </body>
+</html>
