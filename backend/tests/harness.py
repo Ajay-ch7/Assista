@@ -47,7 +47,10 @@ SHOP_SNAPSHOT: dict[str, Any] = {
 }
 
 NO_REPLY = object()
-"""Pass as `snapshot` to leave request_snapshot unanswered."""
+"""Pass as `snapshot` or `screenshot` to leave the request unanswered."""
+
+SCREENSHOT: dict[str, Any] = {"image": "/9j/ZmFrZSBqcGVn", "mime": "image/jpeg"}
+"""A stand-in screenshot reply. Pass {"image": None, "error": "..."} for a failed capture."""
 
 
 @dataclass
@@ -84,11 +87,17 @@ class TextModeClient:
     def send(self, message: dict[str, Any]) -> None:
         self.ws.send_text(json.dumps(message))
 
-    def ask(self, text: str, snapshot: Any = SHOP_SNAPSHOT, error: str | None = None) -> TurnResult:
+    def ask(
+        self,
+        text: str,
+        snapshot: Any = SHOP_SNAPSHOT,
+        error: str | None = None,
+        screenshot: Any = SCREENSHOT,
+    ) -> TurnResult:
         """Sends one text-mode turn and plays the extension's part until it ends."""
         turn_id = self.next_turn_id()
         self.send({"type": "transcript", "turn_id": turn_id, "text": text})
-        return self.finish(turn_id, snapshot, error)
+        return self.finish(turn_id, snapshot, error, screenshot)
 
     def say(
         self, *chunks: bytes, snapshot: Any = SHOP_SNAPSHOT, sample_rate: int = 16000
@@ -103,9 +112,14 @@ class TextModeClient:
         return self.finish(turn_id, snapshot)
 
     def finish(
-        self, turn_id: str, snapshot: Any = SHOP_SNAPSHOT, error: str | None = None
+        self,
+        turn_id: str,
+        snapshot: Any = SHOP_SNAPSHOT,
+        error: str | None = None,
+        screenshot: Any = SCREENSHOT,
     ) -> TurnResult:
-        """Collects the turn's messages, answering request_snapshot, until done or error."""
+        """Collects the turn's messages, answering the backend's requests for the page,
+        until done or error."""
         result = TurnResult()
         while True:
             frame = self.ws.receive()
@@ -119,6 +133,9 @@ class TextModeClient:
                 if error:
                     reply["error"] = error
                 self.send(reply)
+            if msg["type"] == "request_screenshot" and screenshot is not NO_REPLY:
+                ref = {"ref": msg["ref"]} if msg.get("ref") else {}
+                self.send({"type": "screenshot", "turn_id": msg["turn_id"], **ref, **screenshot})
             if msg["type"] in ("done", "error") and msg["turn_id"] == turn_id:
                 return result
 

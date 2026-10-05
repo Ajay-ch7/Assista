@@ -92,7 +92,9 @@ def to_contents(messages: Sequence[Message]) -> list[types.Content]:
                 name=names.get(message.tool_call_id or "", ""),
                 response={"result": _text_of(message)},
             )
-            contents.append(types.Content(role="user", parts=[response]))
+            # An image the tool produced, such as a screenshot, goes beside the response.
+            images = [p for p in _content_parts(message) if p.inline_data is not None]
+            contents.append(types.Content(role="user", parts=[response, *images]))
             continue
         parts = _content_parts(message)
         parts += [

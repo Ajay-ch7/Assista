@@ -56,6 +56,39 @@ class SessionMemory:
 
 
 @dataclass(frozen=True)
+class Screenshot:
+    """Base64 image data from the user's tab."""
+
+    data: str
+    mime: str
+
+
+class ScreenshotUnavailable(Exception):
+    """The extension could not capture the screen. `reason` is a sentence for the user."""
+
+    def __init__(self, code: str, reason: str) -> None:
+        super().__init__(reason)
+        self.code = code
+        self.reason = reason
+
+
+class PageAccess(ABC):
+    """What a specialist may ask of the user's tab while it works on a turn."""
+
+    @abstractmethod
+    async def screenshot(self, ref: str | None = None) -> Screenshot:
+        """The visible part of the tab, or the element `ref` from the turn's snapshot.
+
+        Raises ScreenshotUnavailable when it cannot be captured.
+        """
+
+
+class NoPageAccess(PageAccess):
+    async def screenshot(self, ref: str | None = None) -> Screenshot:
+        raise ScreenshotUnavailable("unavailable", "I can't look at the screen right now.")
+
+
+@dataclass(frozen=True)
 class TurnContext:
     """What a responder needs to answer one request."""
 
@@ -64,6 +97,7 @@ class TurnContext:
     verbosity: Verbosity
     private_mode: bool
     memory: SessionMemory = field(default_factory=SessionMemory)
+    page: PageAccess = field(default_factory=NoPageAccess)
 
 
 @dataclass
@@ -144,17 +178,18 @@ _WORD = "confidence"
 
 
 class ConfidenceFilter:
-    """Takes the confidence line out of a streamed reply and passes the rest through.
+    """Takes confidence lines out of a streamed reply and passes the rest through.
 
-    A line is held back only while it could still turn out to be the confidence line, so
-    the speech keeps streaming.
+    A specialist that works in rounds may state its confidence more than once; the
+    latest statement wins. A line is held back only while it could still turn out to be
+    a confidence line, so the speech keeps streaming.
     """
 
     def __init__(self) -> None:
         self.confidence: Confidence | None = None
         self._line = ""
         self._passing = False
-        """True once the current line is known not to be the confidence line."""
+        """True once the current line is known not to be a confidence line."""
 
     def feed(self, text: str) -> str:
         out: list[str] = []
@@ -167,12 +202,12 @@ class ConfidenceFilter:
             self._line += char
             if char == "\n":
                 out.append(self._end_line())
-            elif self.confidence is None and (match := _INLINE.match(self._line)):
+            elif match := _INLINE.match(self._line):
                 self.confidence = match.group(1).lower()  # type: ignore[assignment]
                 out.append(self._line[match.end() :])
                 self._line = ""
                 self._passing = True
-            elif self.confidence is not None or not self._could_be_confidence(self._line):
+            elif not self._could_be_confidence(self._line):
                 out.append(self._line)
                 self._line = ""
                 self._passing = True
@@ -183,8 +218,7 @@ class ConfidenceFilter:
 
     def _end_line(self) -> str:
         line, self._line = self._line, ""
-        match = _CONFIDENCE_LINE.match(line.strip())
-        if match and self.confidence is None:
+        if match := _CONFIDENCE_LINE.match(line.strip()):
             self.confidence = match.group(1).lower()  # type: ignore[assignment]
             return ""
         return line

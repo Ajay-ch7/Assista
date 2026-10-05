@@ -16,7 +16,13 @@ from typing import Any
 from fastapi import FastAPI, WebSocket
 from pydantic import BaseModel, ValidationError
 
-from app.agents.base import SessionMemory, TurnContext
+from app.agents.base import (
+    PageAccess,
+    Screenshot,
+    ScreenshotUnavailable,
+    SessionMemory,
+    TurnContext,
+)
 from app.agents.team import Team
 from app.config import ProviderNotConfigured, Settings
 from app.errors import TurnError
@@ -30,6 +36,7 @@ from app.protocol import (
     Done,
     Error,
     PageSnapshot,
+    RequestScreenshot,
     RequestSnapshot,
     ScreenshotReply,
     SettingsUpdate,
@@ -46,6 +53,17 @@ from app.voice.gateway import create_stt, create_tts
 from app.voice.sentences import SentenceSplitter
 
 log = logging.getLogger("assista")
+
+# What the user hears when a screenshot fails, by the extension's error code.
+_SCREENSHOT_ERRORS = {
+    "tab_not_visible": "I can only look at the tab that is on screen. Switch to it and ask again.",
+    "not_visible": "That part of the page is not on screen, so I could not look at it.",
+    "stale_ref": "The page changed while I was looking. Please ask again.",
+    "no_tab": "I can't find a web page to look at.",
+    "unreachable_page": "I can't look at this page. Try again on a regular web page.",
+    "timeout": "The page did not send me a picture in time.",
+}
+_SCREENSHOT_FAILED = "I could not capture the screen."
 
 
 Responder = Callable[[TurnContext], AsyncIterator[str]]
@@ -79,6 +97,7 @@ class Deps:
     stt: SpeechToText | None = None
     tts: TextToSpeech | None = None
     snapshot_timeout: float = 10.0
+    screenshot_timeout: float = 10.0
 
     def __post_init__(self) -> None:
         if self.respond is None:
@@ -230,6 +249,7 @@ class Session:
             verbosity=self.verbosity,
             private_mode=self.private_mode,
             memory=self.memory,
+            page=_SessionPage(self, turn_id),
         )
 
         splitter = SentenceSplitter()
@@ -260,24 +280,46 @@ class Session:
             log.exception("text-to-speech failed")
             raise TurnError("tts_failed", "I could not produce speech for my answer.") from error
 
-    async def _request_snapshot(self, turn_id: str) -> PageSnapshot:
-        future: asyncio.Future[SnapshotReply] = asyncio.get_running_loop().create_future()
-        key = (turn_id, "snapshot")
+    async def _request(self, turn_id: str, kind: str, request: BaseModel, wait: float) -> Any:
+        """Sends `request` and waits for the extension's reply of type `kind`."""
+        future: asyncio.Future[Any] = asyncio.get_running_loop().create_future()
+        key = (turn_id, kind)
         self._pending[key] = future
         try:
-            await self._send(RequestSnapshot(turn_id=turn_id))
-            reply = await asyncio.wait_for(future, self.deps.snapshot_timeout)
+            await self._send(request)
+            return await asyncio.wait_for(future, wait)
+        finally:
+            self._pending.pop(key, None)
+
+    async def _request_snapshot(self, turn_id: str) -> PageSnapshot:
+        try:
+            reply: SnapshotReply = await self._request(
+                turn_id, "snapshot", RequestSnapshot(turn_id=turn_id), self.deps.snapshot_timeout
+            )
         except TimeoutError:
             raise TurnError(
                 "page_timeout", "The page did not answer in time. Please try again."
             ) from None
-        finally:
-            self._pending.pop(key, None)
         if reply.snapshot is None:
             raise TurnError(
                 "page_unreadable", "I can't read this page. Try again on a regular web page."
             )
         return reply.snapshot
+
+    async def request_screenshot(self, turn_id: str, ref: str | None) -> Screenshot:
+        try:
+            reply: ScreenshotReply = await self._request(
+                turn_id,
+                "screenshot",
+                RequestScreenshot(turn_id=turn_id, ref=ref),
+                self.deps.screenshot_timeout,
+            )
+        except TimeoutError:
+            reply = ScreenshotReply(turn_id=turn_id, error="timeout")
+        if not reply.image:
+            code = (reply.error or "failed").split(":")[0]
+            raise ScreenshotUnavailable(code, _SCREENSHOT_ERRORS.get(code, _SCREENSHOT_FAILED))
+        return Screenshot(data=reply.image, mime=reply.mime or "image/png")
 
     # Outgoing messages
 
@@ -289,6 +331,17 @@ class Session:
             await self._send(Error(turn_id=turn_id, code=code, message=message))
         except Exception:
             log.debug("could not report %s: the socket is closed", code)
+
+
+class _SessionPage(PageAccess):
+    """The user's tab, as seen from one turn."""
+
+    def __init__(self, session: Session, turn_id: str) -> None:
+        self._session = session
+        self._turn_id = turn_id
+
+    async def screenshot(self, ref: str | None = None) -> Screenshot:
+        return await self._session.request_screenshot(self._turn_id, ref)
 
 
 def _origin_allowed(origin: str | None) -> bool:

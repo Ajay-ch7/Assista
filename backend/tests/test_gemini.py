@@ -144,6 +144,27 @@ def test_conversation_with_tools_and_images_is_converted():
     assert contents[2].parts[0].function_response.response == {"result": '{"ok": true}'}
 
 
+def test_a_tool_result_carries_its_image():
+    call = ToolCall(id="c1", name="crop_element", arguments={"ref": "i1"})
+    image = base64.b64encode(b"\xff\xd8JPEG").decode()
+    contents = to_contents(
+        [
+            Message("user", "describe the photo"),
+            Message("assistant", "", tool_calls=[call]),
+            Message(
+                "tool",
+                [TextPart("Captured image i1."), ImagePart(image, "image/jpeg")],
+                tool_call_id="c1",
+            ),
+        ]
+    )
+    response, picture = contents[2].parts
+    assert response.function_response.name == "crop_element"
+    assert response.function_response.response == {"result": "Captured image i1."}
+    assert picture.inline_data.data == b"\xff\xd8JPEG"
+    assert picture.inline_data.mime_type == "image/jpeg"
+
+
 def test_no_tools_means_no_tool_config():
     assert to_config(LLMRequest(system="s", messages=[])).tools is None
 

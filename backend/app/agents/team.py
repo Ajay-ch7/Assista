@@ -14,6 +14,7 @@ from app.agents.base import (
 )
 from app.agents.reader import Reader
 from app.agents.router import SpecialistName, route
+from app.agents.vision import PageVision, Vision
 from app.llm.base import LLMClient
 
 log = logging.getLogger("assista.team")
@@ -37,14 +38,12 @@ class Team:
         self.llm = llm
         self.router_model = router_model
         reader = Reader(llm, model)
+        self.page_vision = PageVision(llm, model)
         self.specialists: dict[SpecialistName, Specialist] = {
             "reader": reader,
             # Costs, fees and fine print are read from the page until the Advisor exists.
             "advisor": reader,
-            # The Vision specialist replaces this in P2.5.
-            "vision": NotYet(
-                "vision", "I can't look at images yet, but I can read you the page's text."
-            ),
+            "vision": Vision(llm, model),
             "actor": NotYet(
                 "actor",
                 "I can read pages and describe what is on them, but I can't click, type "
@@ -54,7 +53,13 @@ class Team:
         }
 
     def pick(self, name: SpecialistName, ctx: TurnContext) -> Specialist:
-        return self.specialists[name]
+        specialist = self.specialists[name]
+        # A page the snapshot cannot describe is read from a screenshot as well, unless
+        # private mode keeps pictures of the screen on the device.
+        if specialist is self.specialists["reader"]:
+            if ctx.snapshot.flags.thin and not ctx.private_mode:
+                return self.page_vision
+        return specialist
 
     async def respond(self, ctx: TurnContext) -> AsyncIterator[str]:
         name = await route(self.llm, ctx.text, ctx.memory, self.router_model)

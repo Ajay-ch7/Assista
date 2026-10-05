@@ -6,9 +6,21 @@ import json
 import re
 from collections.abc import AsyncIterator, Sequence
 
-from app.llm.base import LLMClient, LLMEvent, LLMRequest, Message, StreamEnd, TextDelta
+from app.llm.base import (
+    ImagePart,
+    LLMClient,
+    LLMEvent,
+    LLMRequest,
+    Message,
+    StreamEnd,
+    TextDelta,
+    ToolCall,
+    ToolCallRequest,
+)
 
 _PAGE_DATA = re.compile(r"<page_data_\w+>\n(.*)\n</page_data_\w+>", re.DOTALL)
+# Vision's system prompts contain this role line (app/agents/vision.py). See _look.
+_VISION_ROLE = "\nYou are Vision."
 
 # Router requests open with this (app/agents/router.py). The mock routes them by keyword.
 _ROUTER_SYSTEM = "You route requests"
@@ -48,10 +60,13 @@ class MockLLM(LLMClient):
             for event in self._script.pop(0):
                 yield event
             return
+        if _VISION_ROLE in request.system:
+            async for event in _look(request):
+                yield event
+            return
         reply = _route(_last_user_text(request.messages)) if routing else _describe(request)
-        # In small pieces, the way a real model streams.
-        for word in re.findall(r"\S+\s*", reply):
-            yield TextDelta(word)
+        for event in _words(reply):
+            yield event
         yield StreamEnd()
 
     @property
@@ -66,6 +81,62 @@ def _last_user_text(messages: Sequence[Message]) -> str:
                 return message.content
             return " ".join(getattr(part, "text", "") for part in message.content)
     return ""
+
+
+def _words(text: str) -> list[LLMEvent]:
+    """Splits a reply into small pieces, the way a real model streams."""
+    return [TextDelta(word) for word in re.findall(r"\S+\s*", text)]
+
+
+async def _look(request: LLMRequest) -> AsyncIterator[LLMEvent]:
+    """Stands in for the Vision specialist: looks with a tool call first, then describes.
+
+    The mock cannot see, so it describes a picture by the alt text the page gives it.
+    """
+    messages = request.messages
+    prompt = _last_user_text(messages)
+    match = _PAGE_DATA.search(prompt)
+    page = json.loads(match.group(1)) if match else {}
+    alts = {image["ref"]: image.get("alt") or "no description" for image in page.get("images", [])}
+    has_image = any(
+        isinstance(part, ImagePart)
+        for message in messages
+        if not isinstance(message.content, str)
+        for part in message.content
+    )
+    failed = next(
+        (m.content for m in messages if m.role == "tool" and isinstance(m.content, str)), None
+    )
+
+    if not request.tools:  # The page view of a thin page.
+        if has_image:
+            reply = f"CONFIDENCE: medium\nFrom the screenshot: {_orient(page)}"
+        else:
+            reply = f"CONFIDENCE: low\nThis page is hard to read. {_orient(page)}"
+    elif failed:
+        reply = "CONFIDENCE: high\n" + failed.removeprefix("Capture failed: ")
+    elif messages[-1].role == "tool":
+        calls = [call for m in messages for call in m.tool_calls]
+        ref = calls[-1].arguments.get("ref")
+        seen = f"a picture: {alts.get(ref, 'no description')}" if ref else "the screen"
+        reply = f"CONFIDENCE: medium\nI looked at {seen}."
+    elif has_image:
+        earlier = re.search(r"attached in this order: ([^.]+)\.", prompt)
+        refs = earlier.group(1).split(", ") if earlier else []
+        about = alts.get(refs[-1], "the screen") if refs else "the screen"
+        reply = f"CONFIDENCE: medium\nLooking again at the picture I described: {about}."
+    else:
+        question = prompt.rsplit("The user's spoken request: ", 1)[-1].lower()
+        if alts and not re.search(r"\b(screen|chart|graph|layout)\b", question):
+            call = ToolCall(id="look_1", name="crop_element", arguments={"ref": next(iter(alts))})
+        else:
+            call = ToolCall(id="look_1", name="capture_screenshot", arguments={})
+        yield ToolCallRequest(call)
+        yield StreamEnd("tool_use")
+        return
+    for event in _words(reply):
+        yield event
+    yield StreamEnd()
 
 
 def _route(prompt: str) -> str:

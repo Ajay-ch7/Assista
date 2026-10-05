@@ -38,9 +38,14 @@ def test_the_confidence_line_is_taken_out(pieces, text, level):
     assert filtered(*pieces) == (text, level)
 
 
-def test_only_the_first_confidence_line_counts():
+def test_a_confidence_line_counts_only_at_the_start_of_a_line():
     text, level = filtered("CONFIDENCE: high\nI read: confidence: low\n")
     assert (text, level) == ("I read: confidence: low\n", "high")
+
+
+def test_the_latest_confidence_line_wins():
+    text, level = filtered("CONFIDENCE: high\n", "Let me look.\n", "CONFIDENCE: low\nIt is dim.")
+    assert (text, level) == ("Let me look.\nIt is dim.", "low")
 
 
 def test_speech_is_not_held_back_once_the_line_cannot_be_the_confidence_line():
