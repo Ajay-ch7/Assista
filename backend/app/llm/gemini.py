@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import secrets
 from collections.abc import AsyncIterator, Sequence
 from typing import Any
 
@@ -51,9 +52,12 @@ class GeminiLLM(LLMClient):
                         call = part.function_call
                         yield ToolCallRequest(
                             ToolCall(
-                                id=call.id or f"call_{calls}",
+                                # Ids must stay unique across rounds: results are matched
+                                # to calls by id before they go back to Gemini.
+                                id=call.id or f"call_{secrets.token_hex(6)}",
                                 name=call.name or "",
                                 arguments=dict(call.args or {}),
+                                opaque=part.thought_signature,
                             )
                         )
                     elif part.text and not part.thought:
@@ -97,8 +101,12 @@ def to_contents(messages: Sequence[Message]) -> list[types.Content]:
             contents.append(types.Content(role="user", parts=[response, *images]))
             continue
         parts = _content_parts(message)
+        # Thinking models reject a call sent back without its thought signature.
         parts += [
-            types.Part.from_function_call(name=call.name, args=call.arguments)
+            types.Part(
+                function_call=types.FunctionCall(name=call.name, args=call.arguments),
+                thought_signature=call.opaque,
+            )
             for call in message.tool_calls
         ]
         role = "model" if message.role == "assistant" else "user"

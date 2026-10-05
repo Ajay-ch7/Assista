@@ -15,7 +15,6 @@ from app.llm.base import (
     TextDelta,
     TextPart,
     ToolCall,
-    ToolCallRequest,
     ToolSpec,
 )
 from app.llm.gateway import create_llm
@@ -102,11 +101,11 @@ def test_tool_calls_come_back_as_events():
     )
     llm = GeminiLLM("", "m", client=client)
     events = run(llm, LLMRequest(system="", messages=[Message("user", "add")], tools=[CLICK]))
-    assert events == [
-        TextDelta("Adding it. "),
-        ToolCallRequest(ToolCall(id="call_1", name="click", arguments={"ref": "e5"})),
-        StreamEnd("tool_use"),
-    ]
+    assert events[0] == TextDelta("Adding it. ")
+    assert events[1].call.name == "click"
+    assert events[1].call.arguments == {"ref": "e5"}
+    assert events[1].call.id.startswith("call_")
+    assert events[2] == StreamEnd("tool_use")
     (tool,) = client.calls[0]["config"].tools
     (declaration,) = tool.function_declarations
     assert declaration.name == "click"
@@ -142,6 +141,40 @@ def test_conversation_with_tools_and_images_is_converted():
     # The result is matched to its call by function name.
     assert contents[2].parts[0].function_response.name == "click"
     assert contents[2].parts[0].function_response.response == {"result": '{"ok": true}'}
+
+
+def test_a_call_keeps_its_thought_signature_for_the_next_request():
+    """Thinking models reject a function call sent back without its signature."""
+    signed = {
+        "function_call": {"name": "click", "args": {"ref": "e5"}},
+        "thought_signature": b"sig",
+    }
+    llm = GeminiLLM("", "m", client=FakeClient([response([signed], "STOP")]))
+    events = run(llm, LLMRequest(system="", messages=[Message("user", "add")], tools=[CLICK]))
+    call = events[0].call
+    assert call.opaque == b"sig"
+
+    contents = to_contents(
+        [
+            Message("user", "add"),
+            Message("assistant", "", tool_calls=[call]),
+            Message("tool", "ok", tool_call_id=call.id),
+        ]
+    )
+    (part,) = contents[1].parts
+    assert part.function_call.name == "click"
+    assert part.thought_signature == b"sig"
+
+
+def test_calls_without_ids_get_ids_unique_across_rounds():
+    """Results are matched to calls by id; a repeated id would pair a result with the
+    wrong function."""
+    unnamed = [{"function_call": {"name": "capture_screenshot", "args": {}}}]
+    ids = set()
+    for _ in range(3):
+        llm = GeminiLLM("", "m", client=FakeClient([response(unnamed, "STOP")]))
+        ids.add(run(llm, LLMRequest(system="", messages=[], tools=[CLICK]))[0].call.id)
+    assert len(ids) == 3
 
 
 def test_a_tool_result_carries_its_image():

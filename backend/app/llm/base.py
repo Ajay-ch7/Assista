@@ -34,6 +34,8 @@ class ToolCall:
     id: str
     name: str
     arguments: dict[str, Any]
+    opaque: Any = field(default=None, compare=False, repr=False)
+    """Provider data that must go back with the call, such as Gemini's thought signature."""
 
 
 @dataclass(frozen=True)
