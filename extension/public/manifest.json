@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "Assista",
+  "version": "0.1.0",
+  "description": "A voice web agent: browse by speaking, with every response as audio.",
+  "minimum_chrome_version": "120",
+  "permissions": ["sidePanel", "tabs", "scripting", "storage"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Open Assista"
+  },
+  "side_panel": {
+    "default_path": "src/panel/index.html"
+  },
+  "commands": {
+    "toggle-talk": {
+      "suggested_key": { "default": "Alt+Shift+A" },
+      "description": "Start or stop listening"
+    },
+    "stop-speech": {
+      "suggested_key": { "default": "Alt+Shift+S" },
+      "description": "Stop speech"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
