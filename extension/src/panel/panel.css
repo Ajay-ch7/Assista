@@ -1,0 +1,52 @@
+:root {
+  color-scheme: light dark;
+  font:
+    16px/1.5 system-ui,
+    sans-serif;
+}
+
+body {
+  margin: 0;
+  padding: 12px 16px;
+}
+
+h1 {
+  font-size: 1.25rem;
+  margin: 0 0 8px;
+}
+
+#status {
+  margin: 0 0 12px;
+  font-weight: 600;
+}
+
+#log {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+}
+
+#log li {
+  margin: 0 0 8px;
+  padding: 6px 8px;
+  border-left: 3px solid GrayText;
+}
+
+#log li[data-role='user'] {
+  border-left-color: Highlight;
+}
+
+#log li[data-role='error'] {
+  border-left-color: Mark;
+}
+
+#text-form {
+  display: grid;
+  gap: 6px;
+}
+
+#text-form input,
+#text-form button {
+  font: inherit;
+  padding: 6px 8px;
+}
