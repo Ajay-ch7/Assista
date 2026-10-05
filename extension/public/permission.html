@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Assista: microphone access</title>
+    <style>
+      body {
+        font:
+          18px/1.5 system-ui,
+          sans-serif;
+        max-width: 36rem;
+        margin: 3rem auto;
+        padding: 0 1rem;
+      }
+      button {
+        font: inherit;
+        padding: 0.5rem 1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Assista needs your microphone</h1>
+      <p id="message" role="status">
+        Chrome is asking whether Assista may use the microphone. Choose Allow so you can talk to
+        Assista.
+      </p>
+      <button id="retry" type="button">Ask again</button>
+    </main>
+    <script type="module" src="permission.js"></script>
+  </body>
+</html>
