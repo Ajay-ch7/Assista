@@ -140,3 +140,20 @@ def test_gateway_needs_keys():
     )
     assert isinstance(create_stt(settings), DeepgramSpeechToText)
     assert isinstance(create_tts(settings), DeepgramTextToSpeech)
+
+
+def test_a_turn_speaks_every_sentence_over_one_connection():
+    async def scenario(url, fake):
+        stream = DeepgramTextToSpeech("secret-key", base_url=url).open_stream()
+        await stream.warm_up()
+        first = [chunk async for chunk in stream.synthesize("One.")]
+        second = [chunk async for chunk in stream.synthesize("Two.")]
+        await stream.close()
+        await stream.close()
+        return first, second
+
+    (first, second), fake = with_server(scenario)
+    assert first == second == [b"\x01\x02" * 100, b"\x03\x04" * 50]
+    assert len(fake.paths) == 1
+    spoken = [m["text"] for m in fake.client_messages if m["type"] == "Speak"]
+    assert spoken == ["One.", "Two."]

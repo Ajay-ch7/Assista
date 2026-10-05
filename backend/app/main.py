@@ -39,7 +39,7 @@ from app.protocol import (
     Verbosity,
     client_message,
 )
-from app.voice.base import SpeechToText, TextToSpeech
+from app.voice.base import SpeechStream, SpeechToText, TextToSpeech
 from app.voice.gateway import create_stt, create_tts
 from app.voice.sentences import SentenceSplitter
 
@@ -213,22 +213,30 @@ class Session:
         self, turn_id: str, fmt: AudioFormat, queue: asyncio.Queue[bytes | None]
     ) -> None:
         stt = self.deps.speech_to_text()
-        tts = self.deps.text_to_speech()
+        speech = self.deps.text_to_speech().open_stream()
+        # Get the voice ready while the user is still talking. If this fails, the
+        # failure shows up, and is reported, when the first sentence is spoken.
+        warm_up = asyncio.create_task(speech.warm_up())
+        warm_up.add_done_callback(lambda task: task.cancelled() or task.exception())
 
         async def audio() -> AsyncIterator[bytes]:
             while (chunk := await queue.get()) is not None:
                 yield chunk
 
         try:
-            text = (await stt.transcribe(audio(), fmt)).strip()
-        except Exception as error:
-            log.exception("speech-to-text failed")
-            raise TurnError("stt_failed", "I could not hear that. Please try again.") from error
-        if not text:
-            raise TurnError("no_speech", "I didn't catch that. Please try again.")
-        await self._answer(turn_id, text, tts)
+            try:
+                text = (await stt.transcribe(audio(), fmt)).strip()
+            except Exception as error:
+                log.exception("speech-to-text failed")
+                raise TurnError("stt_failed", "I could not hear that. Please try again.") from error
+            if not text:
+                raise TurnError("no_speech", "I didn't catch that. Please try again.")
+            await self._answer(turn_id, text, speech)
+        finally:
+            warm_up.cancel()
+            await speech.close()
 
-    async def _answer(self, turn_id: str, text: str, tts: TextToSpeech | None = None) -> None:
+    async def _answer(self, turn_id: str, text: str, tts: SpeechStream | None = None) -> None:
         await self._send(TranscriptFinal(turn_id=turn_id, text=text))
         snapshot = await self._request_snapshot(turn_id)
         ctx = TurnContext(
@@ -251,7 +259,7 @@ class Session:
             raise TurnError("empty_reply", "I have no answer for that. Please try again.")
         await self._send(Done(turn_id=turn_id))
 
-    async def _speak(self, turn_id: str, seq: int, sentence: str, tts: TextToSpeech | None) -> None:
+    async def _speak(self, turn_id: str, seq: int, sentence: str, tts: SpeechStream | None) -> None:
         """Sends one sentence, followed by its audio when the turn is spoken."""
         if tts is None:
             await self._send(SpeakText(turn_id=turn_id, seq=seq, text=sentence))

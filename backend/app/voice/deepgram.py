@@ -12,11 +12,11 @@ import logging
 from collections.abc import AsyncIterator
 from urllib.parse import urlencode
 
-from websockets.asyncio.client import connect
+from websockets.asyncio.client import ClientConnection, connect
 
 from app.config import ProviderNotConfigured
 from app.protocol import AudioFormat
-from app.voice.base import SpeechToText, TextToSpeech
+from app.voice.base import SpeechStream, SpeechToText, TextToSpeech
 
 log = logging.getLogger("assista.deepgram")
 
@@ -94,28 +94,70 @@ class DeepgramTextToSpeech(TextToSpeech):
         return self._format
 
     async def synthesize(self, text: str) -> AsyncIterator[bytes]:
+        stream = self.open_stream()
+        try:
+            async for chunk in stream.synthesize(text):
+                yield chunk
+        finally:
+            await stream.close()
+
+    def open_stream(self) -> DeepgramSpeechStream:
         query = urlencode(
             {"model": self._model, "encoding": "linear16", "sample_rate": TTS_SAMPLE_RATE}
         )
-        async with connect(
-            f"{self._base_url}/v1/speak?{query}",
-            additional_headers=self._headers,
-            open_timeout=_CONNECT_TIMEOUT,
-        ) as ws:
-            await ws.send(json.dumps({"type": "Speak", "text": text}))
-            # Flush asks for the audio of everything sent so far; "Flushed" marks its end.
-            await ws.send(json.dumps({"type": "Flush"}))
-            async for raw in ws:
-                if isinstance(raw, bytes):
-                    yield raw
-                    continue
-                msg = json.loads(raw)
-                kind = msg.get("type")
-                if kind == "Flushed":
-                    break
-                if kind == "Error":
-                    raise RuntimeError(f"Deepgram text-to-speech error: {msg}")
-                if kind == "Warning":
-                    log.warning("Deepgram text-to-speech warning: %s", msg)
+        return DeepgramSpeechStream(self, f"{self._base_url}/v1/speak?{query}", self._headers)
+
+
+class DeepgramSpeechStream(SpeechStream):
+    """One WebSocket for a whole turn. Connecting takes a second or more, so the
+    connection is opened once, early, and every sentence reuses it."""
+
+    def __init__(self, tts: TextToSpeech, url: str, headers: dict[str, str]) -> None:
+        super().__init__(tts)
+        self._url = url
+        self._headers = headers
+        self._connecting: asyncio.Task[ClientConnection] | None = None
+
+    async def _connect(self) -> ClientConnection:
+        return await connect(
+            self._url, additional_headers=self._headers, open_timeout=_CONNECT_TIMEOUT
+        )
+
+    async def _connection(self) -> ClientConnection:
+        if self._connecting is None:
+            self._connecting = asyncio.create_task(self._connect())
+        return await asyncio.shield(self._connecting)
+
+    async def warm_up(self) -> None:
+        await self._connection()
+
+    async def synthesize(self, text: str) -> AsyncIterator[bytes]:
+        ws = await self._connection()
+        await ws.send(json.dumps({"type": "Speak", "text": text}))
+        # Flush asks for the audio of everything sent so far; "Flushed" marks its end.
+        await ws.send(json.dumps({"type": "Flush"}))
+        async for raw in ws:
+            if isinstance(raw, bytes):
+                yield raw
+                continue
+            msg = json.loads(raw)
+            kind = msg.get("type")
+            if kind == "Flushed":
+                return
+            if kind == "Error":
+                raise RuntimeError(f"Deepgram text-to-speech error: {msg}")
+            if kind == "Warning":
+                log.warning("Deepgram text-to-speech warning: %s", msg)
+        raise RuntimeError("Deepgram closed the text-to-speech connection early")
+
+    async def close(self) -> None:
+        connecting, self._connecting = self._connecting, None
+        if connecting is None:
+            return
+        if not connecting.done():
+            connecting.cancel()
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            ws = await connecting
             with contextlib.suppress(Exception):
                 await ws.send(json.dumps({"type": "Close"}))
+            await ws.close()
