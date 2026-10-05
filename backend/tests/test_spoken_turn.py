@@ -38,7 +38,7 @@ def test_spoken_turn_is_transcribed_and_answered_with_audio():
 def test_each_sentence_is_followed_by_its_own_audio():
     with session(**mock_voice()) as client:
         client.send({"type": "audio_start", "turn_id": "t", "format": PCM_16K})
-        client.ws.send_bytes(b"hello")
+        client.ws.send_bytes(b"what is this page?")
         client.send({"type": "audio_end", "turn_id": "t"})
 
         order: list[str] = []

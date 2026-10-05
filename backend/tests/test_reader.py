@@ -105,3 +105,32 @@ def test_without_a_model_the_user_hears_that_setup_is_incomplete():
         result = client.ask("what is this page?")
     assert result.error["code"] == "not_configured"
     assert "not fully set up" in result.error["message"]
+
+
+def test_the_reader_is_told_how_to_orient_and_to_admit_missing_answers():
+    system = reader_request("where am I?", PageSnapshot.model_validate(SHOP_SNAPSHOT), "normal")
+    system = system.system
+    assert "the site and the kind of page" in system
+    assert "clutter_removed" in system
+    assert "If the page does not contain the answer, say so plainly" in system
+    assert "CONFIDENCE: high" in system
+
+
+def test_a_question_is_answered_from_the_page():
+    with session() as client:
+        result = client.ask("what is the price?")
+    assert result.speech == ["The page says: Price: 4,499 rupees.", "In stock."]
+
+
+def test_the_reader_says_when_the_page_lacks_the_answer():
+    with session() as client:
+        result = client.ask("when will it be delivered?")
+    assert result.speech == ["The page doesn't say anything about delivered."]
+    assert result.types[-1] == "done"
+
+
+def test_orientation_mentions_skipped_clutter():
+    cluttered = {**SHOP_SNAPSHOT, "flags": {**SHOP_SNAPSHOT["flags"], "clutter_removed": 5}}
+    with session() as client:
+        result = client.ask("where am I?", snapshot=cluttered)
+    assert result.speech[-1] == "I skipped 5 ads, banners or repeated menus."

@@ -78,7 +78,8 @@ def test_cost_questions_are_read_from_the_page_until_the_advisor_exists():
     llm = MockLLM()
     with session_with(llm) as client:
         result = client.ask("what is the total cost?")
-    assert result.speech[0].startswith("This page is titled")
+    assert result.speech == ["The page doesn't say anything about total cost."]
+    assert len(llm.specialist_requests) == 1
 
 
 def test_earlier_exchanges_reach_the_specialist():

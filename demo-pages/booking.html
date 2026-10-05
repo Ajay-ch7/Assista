@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Book a table - Saffron Kitchen</title>
+    <style>
+      body {
+        font:
+          16px/1.5 system-ui,
+          sans-serif;
+        margin: 0;
+        color: #1c1c1c;
+        background: #fffaf3;
+      }
+      main {
+        max-width: 32rem;
+        margin: 0 auto;
+        padding: 1rem;
+      }
+      form {
+        display: grid;
+        gap: 0.5rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Book a table at Saffron Kitchen</h1>
+      <p>
+        We hold tables for 15 minutes. For groups larger than eight, please call
+        us.
+      </p>
+      <form action="#booked">
+        <label for="name">Your name</label>
+        <input id="name" name="name" autocomplete="name" required />
+        <label for="phone">Phone number</label>
+        <input id="phone" name="phone" type="tel" autocomplete="tel" required />
+        <label for="date">Date</label>
+        <input id="date" name="date" type="date" required />
+        <label for="time">Time</label>
+        <select id="time" name="time">
+          <option>7:00 pm</option>
+          <option>7:30 pm</option>
+          <option>8:00 pm</option>
+          <option>8:30 pm</option>
+        </select>
+        <label for="guests">Number of guests</label>
+        <input
+          id="guests"
+          name="guests"
+          type="number"
+          min="1"
+          max="8"
+          value="2"
+        />
+        <label for="notes">Special requests</label>
+        <textarea id="notes" name="notes"></textarea>
+        <label
+          ><input type="checkbox" name="outside" /> Seat us outside if
+          possible</label
+        >
+        <button type="submit">Book table</button>
+      </form>
+    </main>
+  </body>
+</html>

@@ -81,10 +81,37 @@ def _route(prompt: str) -> str:
 
 
 def _describe(request: LLMRequest) -> str:
-    match = _PAGE_DATA.search(_last_user_text(request.messages))
+    """Orients the user, or answers a question by keyword search of the page data."""
+    prompt = _last_user_text(request.messages)
+    match = _PAGE_DATA.search(prompt)
     if not match:
         return "I have no page to look at."
     page = json.loads(match.group(1))
+    asked = re.search(r"The user's spoken request: (.*)$", prompt, re.DOTALL)
+    question = asked.group(1).strip().lower() if asked else ""
+    words = _content_words(question)
+    if words and not _ORIENTATION.search(question):
+        return "CONFIDENCE: high\n" + _answer(page, words)
+    return "CONFIDENCE: high\n" + _orient(page)
+
+
+_ORIENTATION = re.compile(
+    r"\b(where am i|what is this|what's this|what page|this page|on the page|overview|"
+    r"summari[sz]e|describe the page)\b"
+)
+_STOPWORDS = set(
+    "a an and are be can could do does for from how i in is it me my of on or page say "
+    "says tell that the there this to was what when where which who why will with you "
+    "about any have has does much many".split()
+)
+
+
+def _content_words(question: str) -> list[str]:
+    words = re.findall(r"[a-z0-9]+", question)
+    return [w.rstrip("s") for w in words if w not in _STOPWORDS and len(w) > 2]
+
+
+def _orient(page: dict) -> str:
     nodes = page.get("nodes", [])
 
     def count(*roles: str) -> int:
@@ -98,4 +125,15 @@ def _describe(request: LLMRequest) -> str:
         f"It has {count('link')} links, {count('button')} buttons and "
         f"{count('textbox', 'searchbox', 'combobox', 'checkbox', 'radio')} form fields."
     )
-    return "CONFIDENCE: high\n" + " ".join(sentences)
+    if clutter := page.get("flags", {}).get("clutter_removed"):
+        sentences.append(f"I skipped {clutter} ads, banners or repeated menus.")
+    return " ".join(sentences)
+
+
+def _answer(page: dict, words: list[str]) -> str:
+    texts = [node.get("text") or node.get("name") or "" for node in page.get("nodes", [])]
+    texts += [" ".join(cells) for table in page.get("tables", []) for cells in table["rows"]]
+    for text in texts:
+        if any(word in text.lower() for word in words):
+            return f"The page says: {text.rstrip('.')}."
+    return f"The page doesn't say anything about {' '.join(words)}."
