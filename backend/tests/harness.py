@@ -90,6 +90,18 @@ class TextModeClient:
         self.send({"type": "transcript", "turn_id": turn_id, "text": text})
         return self.finish(turn_id, snapshot, error)
 
+    def say(
+        self, *chunks: bytes, snapshot: Any = SHOP_SNAPSHOT, sample_rate: int = 16000
+    ) -> TurnResult:
+        """Sends one spoken turn: audio_start, the audio chunks, audio_end."""
+        turn_id = self.next_turn_id()
+        fmt = {"encoding": "pcm_s16le", "sample_rate": sample_rate, "channels": 1}
+        self.send({"type": "audio_start", "turn_id": turn_id, "format": fmt})
+        for chunk in chunks:
+            self.ws.send_bytes(chunk)
+        self.send({"type": "audio_end", "turn_id": turn_id})
+        return self.finish(turn_id, snapshot)
+
     def finish(
         self, turn_id: str, snapshot: Any = SHOP_SNAPSHOT, error: str | None = None
     ) -> TurnResult:
