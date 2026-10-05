@@ -1,6 +1,7 @@
 // Content script: runs in every tab. Answers the service worker's requests about the page.
 
 import { isAddressedTo, type SnapshotReply } from '../shared/messages';
+import { installKeyListener } from './keys';
 
 declare global {
   interface Window {
@@ -20,4 +21,5 @@ if (!window.__assistaContentLoaded) {
     }
     return false;
   });
+  installKeyListener();
 }

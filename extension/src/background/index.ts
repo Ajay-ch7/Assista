@@ -30,6 +30,29 @@ chrome.runtime.onMessage.addListener((msg: unknown, sender, sendResponse) => {
   return true;
 });
 
+// chrome.commands reports key down only, so these shortcuts toggle instead of hold. They
+// also work on chrome:// pages and the new-tab page, where no content script runs.
+chrome.commands.onCommand.addListener((command, tab) => {
+  if (command === 'stop-speech') {
+    void sendToPanel({ to: 'panel', kind: 'stop_key' });
+  } else if (command === 'toggle-talk') {
+    void toggleTalk(tab);
+  }
+});
+
+async function toggleTalk(tab?: chrome.tabs.Tab): Promise<void> {
+  // Opening must be the first call, while Chrome still counts the shortcut as a gesture.
+  if (tab?.windowId !== undefined) {
+    await chrome.sidePanel.open({ windowId: tab.windowId }).catch(() => undefined);
+  }
+  const msg: ToPanel = { to: 'panel', kind: 'talk_toggle' };
+  for (let attempt = 0; attempt < 5; attempt++) {
+    if ((await sendToPanel(msg)).ok) return;
+    // The panel was closed and is still loading.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }
+}
+
 async function handle(
   msg: ToWorker,
   sender: chrome.runtime.MessageSender,
@@ -48,7 +71,7 @@ async function handle(
  * Forwards a message to the panel. When the panel is closed and the message came from a
  * tab, tries to open the panel there; Chrome allows that only shortly after a user gesture.
  */
-export async function sendToPanel(msg: ToPanel, openOnTab?: chrome.tabs.Tab): Promise<Ack> {
+async function sendToPanel(msg: ToPanel, openOnTab?: chrome.tabs.Tab): Promise<Ack> {
   try {
     await chrome.runtime.sendMessage(msg);
     return { ok: true };

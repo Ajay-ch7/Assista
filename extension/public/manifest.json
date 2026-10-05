@@ -16,6 +16,16 @@
   "side_panel": {
     "default_path": "src/panel/index.html"
   },
+  "commands": {
+    "toggle-talk": {
+      "suggested_key": { "default": "Alt+Shift+A" },
+      "description": "Start or stop listening"
+    },
+    "stop-speech": {
+      "suggested_key": { "default": "Alt+Shift+S" },
+      "description": "Stop speech"
+    }
+  },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],

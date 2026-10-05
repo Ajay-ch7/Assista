@@ -1,12 +1,14 @@
 // Voice shell. Lives in the side panel because the service worker has no microphone and
 // is shut down when idle. Holds the microphone, the speaker and the backend WebSocket.
 
+import { DEFAULT_KEYS, HoldKeyMachine, attachHoldKey } from '../shared/holdKey';
 import { isAddressedTo, type Ack, type SnapshotReply, type ToWorker } from '../shared/messages';
 import type { AudioFormat, ServerMessage } from '../shared/protocol';
 import { cancelSay, say } from './localVoice';
 import { Mic } from './mic';
 import { Player } from './player';
 import { BackendSocket } from './socket';
+import { watchKeySettings } from '../store/settings';
 
 type TurnState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'done' | 'error';
 
@@ -224,10 +226,33 @@ stopButton.addEventListener('click', stopSpeech);
 
 chrome.runtime.onMessage.addListener((msg: unknown, _sender, sendResponse) => {
   if (!isAddressedTo(msg, 'panel')) return false;
+  switch (msg.kind) {
+    case 'talk_key':
+      if (msg.phase === 'down') void startListening();
+      else void stopListening(msg.phase === 'cancel');
+      break;
+    case 'talk_toggle':
+      if (listeningTurn) void stopListening();
+      else void startListening();
+      break;
+    case 'stop_key':
+      stopSpeech();
+      break;
+  }
   const ack: Ack = { ok: true };
   sendResponse(ack);
   return false;
 });
+
+// The same keys work while focus is in the panel itself.
+const holdKey = new HoldKeyMachine(DEFAULT_KEYS, {
+  onTalkStart: () => void startListening(),
+  onTalkEnd: () => void stopListening(),
+  onTalkCancel: () => void stopListening(true),
+  onStop: stopSpeech,
+});
+attachHoldKey(window, holdKey);
+watchKeySettings((settings) => holdKey.configure(settings));
 
 async function askForMicrophoneOnce(): Promise<void> {
   const status = await navigator.permissions.query({ name: 'microphone' as PermissionName });
