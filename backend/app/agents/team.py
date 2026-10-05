@@ -69,18 +69,41 @@ class Team:
             yield piece
 
 
+UNSURE_BEFORE = "I'm not sure about this.\n"
+UNSURE_AFTER = "\nI'm not sure about that, so please check it."
+
+
 async def run_specialist(specialist: Specialist, ctx: TurnContext) -> AsyncIterator[str]:
-    """Streams a specialist's speech without its confidence line, then records the turn."""
+    """Streams a specialist's speech without its confidence line, then records the turn.
+
+    Low confidence is always spoken (F11): before the answer when the specialist says so
+    up front, otherwise after it.
+    """
     out = SpecialistOutput()
     confidence = ConfidenceFilter()
     spoken: list[str] = []
+    started = warned = False
+
+    def speak(speech: str) -> list[str]:
+        nonlocal started, warned
+        pieces = []
+        if not started and speech.strip():
+            started = True
+            if confidence.confidence == "low":
+                warned = True
+                pieces.append(UNSURE_BEFORE)
+        pieces.append(speech)
+        spoken.extend(pieces)
+        return pieces
+
     async for piece in specialist.respond(ctx, out):
-        if speech := confidence.feed(piece):
-            spoken.append(speech)
+        for speech in speak(confidence.feed(piece)):
             yield speech
-    if rest := confidence.flush():
-        spoken.append(rest)
-        yield rest
+    for speech in speak(confidence.flush()):
+        yield speech
+    if confidence.confidence == "low" and not warned:
+        spoken.append(UNSURE_AFTER)
+        yield UNSURE_AFTER
 
     response = SpecialistResponse(
         speech="".join(spoken).strip(),

@@ -54,6 +54,44 @@ def test_speech_is_not_held_back_once_the_line_cannot_be_the_confidence_line():
     assert confidence.feed("ge") == "ge"
 
 
+def scripted(*pieces: str) -> MockLLM:
+    return MockLLM(script=[[*(TextDelta(piece) for piece in pieces), StreamEnd()]])
+
+
+def test_low_confidence_is_spoken_before_the_answer():
+    with session_with(scripted("CONFIDENCE: low\n", "It may be a shop.")) as client:
+        result = client.ask("where am I?")
+    assert result.speech == ["I'm not sure about this.", "It may be a shop."]
+
+
+def test_low_confidence_stated_late_is_spoken_after_the_answer():
+    with session_with(scripted("It may be a shop.\n", "CONFIDENCE: low")) as client:
+        result = client.ask("where am I?")
+    assert result.speech == ["It may be a shop.", "I'm not sure about that, so please check it."]
+
+
+@pytest.mark.parametrize("line", ["CONFIDENCE: high\n", "CONFIDENCE: medium\n", ""])
+def test_other_confidence_levels_add_nothing(line):
+    with session_with(scripted(line, "It is a shop.")) as client:
+        result = client.ask("where am I?")
+    assert result.speech == ["It is a shop."]
+
+
+def test_the_spoken_warning_is_remembered_with_the_answer():
+    llm = MockLLM(
+        script=[
+            [TextDelta("CONFIDENCE: low\nIt may be a shop."), StreamEnd()],
+            [TextDelta("CONFIDENCE: high\nOK."), StreamEnd()],
+        ]
+    )
+    with session_with(llm) as client:
+        client.ask("where am I?")
+        client.ask("and now?")
+    assert llm.specialist_requests[1].messages[1].content == (
+        "I'm not sure about this.\nIt may be a shop."
+    )
+
+
 def test_the_router_runs_on_the_router_model_and_the_reader_on_the_main_model():
     llm = MockLLM()
     with session_with(llm, llm_model="main-model", router_model="small-model") as client:

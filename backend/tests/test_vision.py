@@ -155,7 +155,7 @@ def test_a_thin_page_without_a_screenshot_is_read_from_the_snapshot():
     llm = MockLLM()
     with session_with(llm) as client:
         result = client.ask("where am I?", snapshot=THIN, screenshot=failed)
-    assert "This page is hard to read." in result.speech
+    assert result.speech[:2] == ["I'm not sure about this.", "This page is hard to read."]
     (vision,) = llm.specialist_requests
     assert images_in(vision) == []
     assert "No screenshot is attached" in vision.messages[-1].content
