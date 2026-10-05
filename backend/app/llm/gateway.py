@@ -7,11 +7,13 @@ from collections.abc import Callable
 
 from app.config import ProviderNotConfigured, Settings
 from app.llm.base import LLMClient
+from app.llm.gemini import GeminiLLM
 from app.llm.mock import MockLLM
 
-# Provider name -> factory. A real adapter registers here once its provider is chosen.
-# Adapters take their model names from settings.llm_model and settings.router_model.
+# Provider name -> factory. Adapters take their model names from settings, never
+# from code.
 LLM_PROVIDERS: dict[str, Callable[[Settings], LLMClient]] = {
+    "gemini": lambda settings: GeminiLLM(settings.llm_api_key, settings.llm_model),
     "mock": lambda settings: MockLLM(),
 }
 

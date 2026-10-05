@@ -7,13 +7,16 @@ from collections.abc import Callable
 
 from app.config import ProviderNotConfigured, Settings
 from app.voice.base import SpeechToText, TextToSpeech
+from app.voice.deepgram import DeepgramSpeechToText, DeepgramTextToSpeech
 from app.voice.mock import MockSpeechToText, MockTextToSpeech
 
-# Provider name -> factory. A real adapter registers here once its provider is chosen.
+# Provider name -> factory.
 STT_PROVIDERS: dict[str, Callable[[Settings], SpeechToText]] = {
+    "deepgram": lambda settings: DeepgramSpeechToText(settings.stt_api_key),
     "mock": lambda settings: MockSpeechToText(),
 }
 TTS_PROVIDERS: dict[str, Callable[[Settings], TextToSpeech]] = {
+    "deepgram": lambda settings: DeepgramTextToSpeech(settings.tts_api_key),
     "mock": lambda settings: MockTextToSpeech(),
 }
 

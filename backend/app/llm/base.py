@@ -80,7 +80,8 @@ class LLMRequest:
     tools: Sequence[ToolSpec] = field(default_factory=tuple)
     model: str | None = None
     """Overrides the client's default model, for example with ROUTER_MODEL."""
-    max_tokens: int = 1024
+    max_tokens: int | None = None
+    """Caps the reply. None leaves the provider's own limit in place."""
 
 
 class LLMClient(ABC):
