@@ -1,4 +1,4 @@
-﻿import { resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 
 // Content scripts cannot import modules, so this build emits a single classic script.

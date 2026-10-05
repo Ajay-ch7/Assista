@@ -45,6 +45,13 @@ h1 {
   gap: 6px;
 }
 
+#controls {
+  display: flex;
+  gap: 6px;
+  margin: 0 0 12px;
+}
+
+#controls button,
 #text-form input,
 #text-form button {
   font: inherit;

@@ -1,4 +1,4 @@
-﻿import { resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { defineConfig, loadEnv } from 'vite';
 
 // Builds the panel page, the permission page script and the service worker as ES modules.
