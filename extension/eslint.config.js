@@ -11,4 +11,8 @@ export default tseslint.config(
       globals: { ...globals.browser, chrome: 'readonly' },
     },
   },
+  {
+    files: ['scripts/**'],
+    languageOptions: { globals: globals.node },
+  },
 );

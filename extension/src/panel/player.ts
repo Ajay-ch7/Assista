@@ -50,16 +50,24 @@ export class Player {
     this.decoder.reset();
   }
 
-  /** A short tone. Stands in for the sound cues until P2.8 adds the cue files. */
-  beep(frequency: number, seconds: number): void {
+  /** Decodes a sound file, such as a cue, for `playClip`. */
+  decode(data: ArrayBuffer): Promise<AudioBuffer> {
+    return this.context().decodeAudioData(data);
+  }
+
+  /**
+   * Plays a short sound at normal speed: now, or after the speech already queued. `stop`
+   * silences it like speech.
+   */
+  playClip(buffer: AudioBuffer, afterSpeech = false): void {
     const ctx = this.context();
-    const oscillator = ctx.createOscillator();
-    const gain = ctx.createGain();
-    oscillator.frequency.value = frequency;
-    gain.gain.value = 0.15;
-    oscillator.connect(gain).connect(ctx.destination);
-    oscillator.start();
-    oscillator.stop(ctx.currentTime + seconds);
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+    const now = ctx.currentTime + 0.01;
+    source.start(afterSpeech ? Math.max(this.nextTime, now) : now);
+    this.sources.add(source);
+    source.onended = () => this.sources.delete(source);
   }
 
   private context(): AudioContext {

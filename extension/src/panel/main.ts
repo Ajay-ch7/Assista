@@ -21,6 +21,7 @@ import {
   type Preferences,
 } from '../store/preferences';
 import { watchKeySettings } from '../store/settings';
+import { Cues } from './cues';
 import { cancelSay, say } from './localVoice';
 import { Mic } from './mic';
 import { Player } from './player';
@@ -52,6 +53,7 @@ const stopButton = document.querySelector<HTMLButtonElement>('#stop-button')!;
 const backendUrl = new URLSearchParams(location.search).get('backend') ?? __BACKEND_WS_URL__;
 
 const player = new Player();
+const cues = new Cues(player);
 const mic = new Mic();
 const socket = new BackendSocket(backendUrl, {
   onMessage: onBackendMessage,
@@ -81,6 +83,8 @@ let incomingAudio: AudioFormat | null = null;
 let muted = false;
 /** True while the audio frames now arriving belong to a reply sentence worth keeping. */
 let recordingAudio = false;
+/** True when the active turn was a local command, which has its own spoken reply. */
+let localTurn = false;
 
 function setStatus(text: string, turn: TurnState): void {
   statusEl.textContent = text;
@@ -97,6 +101,8 @@ function log(role: 'user' | 'assistant' | 'error', text: string): void {
 
 /** Speaks a failure with the browser's voice, since it cannot come from the backend. */
 function fail(text: string): void {
+  cues.stopThinking();
+  void cues.play('error');
   log('error', text);
   setStatus(text, 'error');
   say(text);
@@ -105,11 +111,13 @@ function fail(text: string): void {
 function beginTurn(): string {
   stopSpeech();
   muted = false;
+  localTurn = false;
   activeTurn = `t${Date.now().toString(36)}-${++turnCounter}`;
   return activeTurn;
 }
 
 function stopSpeech(): void {
+  cues.stopThinking();
   player.stop();
   cancelSay();
   incomingAudio = null;
@@ -196,8 +204,12 @@ function sendText(text: string): void {
     return;
   }
   const turn = beginTurn();
-  if (socket.send({ type: 'transcript', turn_id: turn, text })) setStatus('Thinking.', 'thinking');
-  else fail('Assista cannot reach its server.');
+  if (socket.send({ type: 'transcript', turn_id: turn, text })) {
+    setStatus('Thinking.', 'thinking');
+    cues.startThinking();
+  } else {
+    fail('Assista cannot reach its server.');
+  }
 }
 
 async function startListening(): Promise<void> {
@@ -226,7 +238,7 @@ async function startListening(): Promise<void> {
   }
   socket.send({ type: 'audio_start', turn_id: turn, format });
   streamingTurn = turn;
-  player.beep(880, 0.08);
+  void cues.play('listening');
   setStatus('Listening.', 'listening');
 }
 
@@ -251,7 +263,7 @@ async function stopListening(cancel = false): Promise<void> {
   if (cancel) {
     setStatus('Ready.', 'idle');
   } else {
-    player.beep(660, 0.08);
+    cues.startThinking();
     setStatus('Thinking.', 'thinking');
   }
 }
@@ -277,8 +289,12 @@ function onBackendMessage(msg: ServerMessage): void {
       log('user', msg.text);
       // A spoken local command: the backend ends the turn without answering.
       const command = parseLocalCommand(msg.text);
-      if (command) runLocalCommand(command);
-      else setStatus('Thinking.', 'thinking');
+      if (command) {
+        localTurn = true;
+        runLocalCommand(command);
+      } else {
+        setStatus('Thinking.', 'thinking');
+      }
       break;
     }
     case 'request_snapshot':
@@ -288,6 +304,7 @@ function onBackendMessage(msg: ServerMessage): void {
       void replyWithScreenshot(msg.turn_id, msg.ref);
       break;
     case 'speak_text':
+      cues.stopThinking();
       log('assistant', msg.text);
       replies.sentence(msg.turn_id, msg.text, msg.audio ?? null);
       recordingAudio = Boolean(msg.audio);
@@ -296,6 +313,8 @@ function onBackendMessage(msg: ServerMessage): void {
       setStatus('Speaking.', 'speaking');
       break;
     case 'done':
+      cues.stopThinking();
+      if (!localTurn) void cues.play('done', true);
       incomingAudio = null;
       recordingAudio = false;
       if (statusEl.dataset.turn !== 'done') setStatus('Ready.', 'done');
@@ -304,6 +323,9 @@ function onBackendMessage(msg: ServerMessage): void {
       incomingAudio = null;
       recordingAudio = false;
       fail(msg.message);
+      break;
+    case 'cue':
+      void cues.play(msg.name);
       break;
     default:
       console.warn(`Assista: ${msg.type} is not handled yet`);
