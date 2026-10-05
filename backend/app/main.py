@@ -28,6 +28,7 @@ from app.config import ProviderNotConfigured, Settings
 from app.errors import TurnError
 from app.llm.base import LLMClient
 from app.llm.gateway import create_llm
+from app.local_commands import is_local_command
 from app.protocol import (
     AudioEnd,
     AudioFormat,
@@ -242,6 +243,10 @@ class Session:
 
     async def _answer(self, turn_id: str, text: str, tts: SpeechStream | None = None) -> None:
         await self._send(TranscriptFinal(turn_id=turn_id, text=text))
+        if is_local_command(text):
+            # Stop, repeat, speed and the like are carried out by the extension.
+            await self._send(Done(turn_id=turn_id))
+            return
         snapshot = await self._request_snapshot(turn_id)
         ctx = TurnContext(
             text=text,

@@ -9,17 +9,37 @@ import {
   type SnapshotReply,
   type ToWorker,
 } from '../shared/messages';
-import type { AudioFormat, ServerMessage } from '../shared/protocol';
+import { parseLocalCommand, type LocalCommand } from '../shared/localCommands';
+import type { AudioFormat, ServerMessage, Verbosity } from '../shared/protocol';
+import {
+  DEFAULT_PREFERENCES,
+  MAX_SPEED,
+  MIN_SPEED,
+  SPEED_STEP,
+  savePreferences,
+  watchPreferences,
+  type Preferences,
+} from '../store/preferences';
+import { watchKeySettings } from '../store/settings';
 import { cancelSay, say } from './localVoice';
 import { Mic } from './mic';
 import { Player } from './player';
+import { ReplyRecorder } from './replies';
 import { BackendSocket } from './socket';
-import { watchKeySettings } from '../store/settings';
+import { spellOut, spellTarget } from './spell';
 
 type TurnState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'done' | 'error';
 
 /** Recording continues this long after release, so the last syllable is not cut off. */
 const TAIL_MS = 150;
+/** Spelling is read a little slower than the user's speed. */
+const SPELLING_RATE = 0.8;
+
+const VERBOSITY_CONFIRMATIONS: Record<Verbosity, string> = {
+  brief: 'I will keep my answers brief.',
+  normal: 'I will give answers of normal length.',
+  detailed: 'I will give more detail.',
+};
 
 const statusEl = document.querySelector<HTMLParagraphElement>('#status')!;
 const logEl = document.querySelector<HTMLOListElement>('#log')!;
@@ -39,8 +59,12 @@ const socket = new BackendSocket(backendUrl, {
   onState: (open) => {
     statusEl.dataset.connection = open ? 'open' : 'closed';
     setStatus(open ? 'Ready.' : 'Not connected to the Assista server.', 'idle');
+    if (open) sendSettings();
   },
 });
+/** The last reply, kept for "repeat" and "spell it". */
+const replies = new ReplyRecorder();
+let preferences: Preferences = DEFAULT_PREFERENCES;
 
 let turnCounter = 0;
 /** The turn whose replies are accepted. Replies to any other turn are dropped. */
@@ -55,6 +79,8 @@ let closingTurn = false;
 let incomingAudio: AudioFormat | null = null;
 /** True once the user has stopped speech for the active turn. */
 let muted = false;
+/** True while the audio frames now arriving belong to a reply sentence worth keeping. */
+let recordingAudio = false;
 
 function setStatus(text: string, turn: TurnState): void {
   statusEl.textContent = text;
@@ -90,7 +116,85 @@ function stopSpeech(): void {
   muted = true;
 }
 
+function sendSettings(): void {
+  socket.send({
+    type: 'settings',
+    turn_id: 'settings',
+    verbosity: preferences.verbosity,
+    private_mode: false,
+  });
+}
+
+/** Says something that is not part of a backend reply, at the user's speed. */
+function answerLocally(text: string, rate = preferences.speed): void {
+  log('assistant', text);
+  setStatus(text, 'done');
+  say(text, rate);
+}
+
+/** Handles stop, repeat, speed, detail and spelling in the panel; they never reach the model. */
+function runLocalCommand(command: LocalCommand): void {
+  stopSpeech();
+  switch (command.kind) {
+    case 'stop':
+      setStatus('Stopped.', 'done');
+      break;
+    case 'repeat':
+      repeatLastReply();
+      break;
+    case 'slower':
+    case 'faster':
+      void changeSpeed(command.kind === 'faster' ? SPEED_STEP : -SPEED_STEP);
+      break;
+    case 'verbosity':
+      void savePreferences({ verbosity: command.level });
+      answerLocally(VERBOSITY_CONFIRMATIONS[command.level]);
+      break;
+    case 'spell': {
+      const target = command.text ?? spellTarget(replies.text);
+      if (target) answerLocally(spellOut(target), preferences.speed * SPELLING_RATE);
+      else answerLocally('There is nothing to spell yet.');
+      break;
+    }
+  }
+}
+
+function repeatLastReply(): void {
+  if (!replies.last.length) {
+    answerLocally('I have not said anything yet.');
+    return;
+  }
+  setStatus('Repeating.', 'done');
+  if (!replies.hasAudio) {
+    say(replies.text, preferences.speed);
+    return;
+  }
+  for (const sentence of replies.last) {
+    player.startSentence();
+    for (const chunk of sentence.chunks) player.enqueue(chunk, sentence.format!);
+  }
+}
+
+async function changeSpeed(step: number): Promise<void> {
+  const speed = preferences.speed + step;
+  if (speed > MAX_SPEED || speed < MIN_SPEED) {
+    answerLocally(
+      step > 0 ? 'This is the fastest I can speak.' : 'This is the slowest I can speak.',
+    );
+    return;
+  }
+  preferences = await savePreferences({ speed });
+  player.rate = preferences.speed;
+  answerLocally(step > 0 ? 'Faster.' : 'Slower.');
+}
+
 function sendText(text: string): void {
+  const command = parseLocalCommand(text);
+  if (command) {
+    log('user', text);
+    runLocalCommand(command);
+    return;
+  }
   const turn = beginTurn();
   if (socket.send({ type: 'transcript', turn_id: turn, text })) setStatus('Thinking.', 'thinking');
   else fail('Assista cannot reach its server.');
@@ -165,13 +269,18 @@ function openPermissionPage(): void {
 function onBackendMessage(msg: ServerMessage): void {
   if (msg.turn_id !== activeTurn) {
     incomingAudio = null;
+    recordingAudio = false;
     return;
   }
   switch (msg.type) {
-    case 'transcript_final':
+    case 'transcript_final': {
       log('user', msg.text);
-      setStatus('Thinking.', 'thinking');
+      // A spoken local command: the backend ends the turn without answering.
+      const command = parseLocalCommand(msg.text);
+      if (command) runLocalCommand(command);
+      else setStatus('Thinking.', 'thinking');
       break;
+    }
     case 'request_snapshot':
       void replyWithSnapshot(msg.turn_id);
       break;
@@ -180,16 +289,20 @@ function onBackendMessage(msg: ServerMessage): void {
       break;
     case 'speak_text':
       log('assistant', msg.text);
+      replies.sentence(msg.turn_id, msg.text, msg.audio ?? null);
+      recordingAudio = Boolean(msg.audio);
       player.startSentence();
       incomingAudio = muted ? null : (msg.audio ?? null);
       setStatus('Speaking.', 'speaking');
       break;
     case 'done':
       incomingAudio = null;
-      setStatus('Ready.', 'done');
+      recordingAudio = false;
+      if (statusEl.dataset.turn !== 'done') setStatus('Ready.', 'done');
       break;
     case 'error':
       incomingAudio = null;
+      recordingAudio = false;
       fail(msg.message);
       break;
     default:
@@ -198,6 +311,7 @@ function onBackendMessage(msg: ServerMessage): void {
 }
 
 function onBackendAudio(chunk: ArrayBuffer): void {
+  if (recordingAudio) replies.audio(chunk);
   if (incomingAudio) player.enqueue(chunk, incomingAudio);
 }
 
@@ -281,6 +395,12 @@ const holdKey = new HoldKeyMachine(DEFAULT_KEYS, {
 });
 attachHoldKey(window, holdKey);
 watchKeySettings((settings) => holdKey.configure(settings));
+watchPreferences((next) => {
+  const verbosityChanged = next.verbosity !== preferences.verbosity;
+  preferences = next;
+  player.rate = next.speed;
+  if (verbosityChanged) sendSettings();
+});
 
 async function askForMicrophoneOnce(): Promise<void> {
   const status = await navigator.permissions.query({ name: 'microphone' as PermissionName });

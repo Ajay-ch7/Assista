@@ -7,6 +7,10 @@ export class Player {
   private nextTime = 0;
   private readonly sources = new Set<AudioBufferSourceNode>();
   private readonly decoder = new PcmDecoder();
+  /** Playback rate of speech; 1 is normal. Applies to audio queued from now on. */
+  rate = 1;
+
+  constructor(private readonly createContext: () => AudioContext = () => new AudioContext()) {}
 
   get playing(): boolean {
     return this.sources.size > 0;
@@ -26,10 +30,11 @@ export class Player {
 
     const source = ctx.createBufferSource();
     source.buffer = buffer;
+    source.playbackRate.value = this.rate;
     source.connect(ctx.destination);
     const startAt = Math.max(this.nextTime, ctx.currentTime + 0.03);
     source.start(startAt);
-    this.nextTime = startAt + buffer.duration;
+    this.nextTime = startAt + buffer.duration / this.rate;
     this.sources.add(source);
     source.onended = () => this.sources.delete(source);
   }
@@ -58,7 +63,7 @@ export class Player {
   }
 
   private context(): AudioContext {
-    this.ctx ??= new AudioContext();
+    this.ctx ??= this.createContext();
     if (this.ctx.state === 'suspended') void this.ctx.resume();
     return this.ctx;
   }

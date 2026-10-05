@@ -1,0 +1,54 @@
+{
+  "stop": ["stop", "stop talking", "stop speaking", "be quiet", "quiet", "silence", "shush"],
+  "repeat": [
+    "repeat",
+    "repeat that",
+    "repeat it",
+    "say that again",
+    "say it again",
+    "again",
+    "pardon",
+    "come again",
+    "what did you say",
+    "one more time"
+  ],
+  "slower": [
+    "slower",
+    "speak slower",
+    "talk slower",
+    "slow down",
+    "more slowly",
+    "speak more slowly",
+    "too fast"
+  ],
+  "faster": [
+    "faster",
+    "speak faster",
+    "talk faster",
+    "speed up",
+    "more quickly",
+    "speak more quickly",
+    "too slow"
+  ],
+  "brief": [
+    "be brief",
+    "brief",
+    "brief mode",
+    "brief answers",
+    "shorter",
+    "shorter answers",
+    "less detail",
+    "keep it short"
+  ],
+  "normal": ["normal detail", "normal answers", "normal mode", "normal verbosity", "medium detail"],
+  "detailed": [
+    "detailed",
+    "be detailed",
+    "detailed mode",
+    "detailed answers",
+    "more detail",
+    "more details",
+    "longer answers"
+  ],
+  "spell": ["spell it", "spell that", "spell that again", "spell it out", "spell"]
+}
