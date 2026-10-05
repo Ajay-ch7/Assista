@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import random
 import secrets
 from collections.abc import AsyncIterator, Sequence
 from typing import Any
@@ -26,16 +27,18 @@ from app.llm.base import (
 
 class GeminiLLM(LLMClient):
     def __init__(self, api_key: str, model: str, *, client: Any = None) -> None:
-        """`model` is the default model; a request may name another, such as the router's."""
-        if client is None and not api_key:
+        """`model` is the default model; a request may name another, such as the router's.
+        `api_key` may hold several comma-separated keys; each request uses one at random."""
+        keys = [key.strip() for key in api_key.split(",") if key.strip()]
+        if client is None and not keys:
             raise ProviderNotConfigured("LLM_API_KEY is not set")
         if not model:
             raise ProviderNotConfigured("LLM_MODEL is not set")
-        self._client = client or genai.Client(api_key=api_key)
+        self._clients = [client] if client else [genai.Client(api_key=key) for key in keys]
         self._model = model
 
     async def stream(self, request: LLMRequest) -> AsyncIterator[LLMEvent]:
-        chunks = await self._client.aio.models.generate_content_stream(
+        chunks = await random.choice(self._clients).aio.models.generate_content_stream(
             model=request.model or self._model,
             contents=to_contents(request.messages),
             config=to_config(request),

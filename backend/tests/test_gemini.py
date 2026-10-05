@@ -15,6 +15,7 @@ from app.llm.base import (
     TextDelta,
     TextPart,
     ToolCall,
+    ToolCallOpaque,
     ToolSpec,
 )
 from app.llm.gateway import create_llm
@@ -210,3 +211,15 @@ def test_gateway_needs_a_key_and_a_model():
     assert isinstance(
         create_llm(Settings(llm_provider="gemini", llm_api_key="k", llm_model="m")), GeminiLLM
     )
+
+
+def test_several_keys_each_get_a_client(monkeypatch):
+    seen: list[str] = []
+    monkeypatch.setattr(
+        "app.llm.gemini.genai.Client", lambda api_key: seen.append(api_key) or api_key
+    )
+    llm = GeminiLLM(" k1, k2 ,,k3 ", "m")
+    assert seen == ["k1", "k2", "k3"]
+    assert llm._clients == ["k1", "k2", "k3"]
+    with pytest.raises(ProviderNotConfigured, match="LLM_API_KEY"):
+        GeminiLLM(" , ", "m")
