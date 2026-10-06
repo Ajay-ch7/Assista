@@ -37,6 +37,13 @@ SELECT = _tool(
     {"ref": _REF, "option": {"type": "string", "description": "The option's text."}},
     ["ref", "option"],
 )
+FOCUS = _tool(
+    "focus",
+    "Move keyboard focus to an element, such as a search box or a heading, without typing "
+    "or pressing anything, so that the user can type there or carry on from there.",
+    {"ref": _REF},
+    ["ref"],
+)
 SCROLL = _tool(
     "scroll",
     "Scroll the page, or scroll one element into view when ref is given.",
@@ -65,6 +72,16 @@ OPEN_URL = _tool(
     },
     ["url"],
 )
+WEB_SEARCH = _tool(
+    "web_search",
+    "Search the web with a search engine and open its results page, in the current tab or "
+    "in a new tab. Use it to find a website, not to search the page or site the user is on.",
+    {
+        "query": {"type": "string", "description": "The words to search for."},
+        "new_tab": {"type": "boolean"},
+    },
+    ["query"],
+)
 ASK_USER = _tool(
     "ask_user",
     "Ask the user one short question and wait for their answer, for example the value for "
@@ -73,6 +90,6 @@ ASK_USER = _tool(
     ["question"],
 )
 
-PAGE_ACTIONS = [CLICK, TYPE, SELECT, SCROLL, GO_BACK, SWITCH_TAB, OPEN_URL]
+PAGE_ACTIONS = [CLICK, TYPE, SELECT, FOCUS, SCROLL, GO_BACK, SWITCH_TAB, OPEN_URL, WEB_SEARCH]
 """Tools the extension carries out."""
 ACTOR_TOOLS = [*PAGE_ACTIONS, ASK_USER]

@@ -33,7 +33,7 @@ from app.agents.base import (
 from app.agents.team import Team
 from app.config import ProviderNotConfigured, Settings
 from app.confirmation import parse_confirmation
-from app.errors import TurnError
+from app.errors import PAGE_UNREADABLE, TurnError
 from app.llm.base import LLMClient
 from app.llm.gateway import create_llm
 from app.local_commands import is_local_command
@@ -52,6 +52,7 @@ from app.protocol import (
     RequestSnapshot,
     ScreenshotReply,
     SettingsUpdate,
+    SnapshotFlags,
     SnapshotReply,
     SpeakText,
     ToolCall,
@@ -303,7 +304,16 @@ class Session:
         else:
             await self._send(TranscriptFinal(turn_id=turn_id, text=text))
 
-        snapshot = await self._request_snapshot(turn_id)
+        try:
+            snapshot = await self._request_snapshot(turn_id)
+        except TurnError as error:
+            if error.code != "page_unreadable":
+                raise
+            # The new-tab page and chrome:// pages cannot be read, but a site can still be
+            # opened or the web searched from them. Other requests fail after routing.
+            snapshot = PageSnapshot(
+                snapshot_id=f"unreadable-{turn_id}", flags=SnapshotFlags(unreadable=True)
+            )
         ctx = TurnContext(
             text=text,
             snapshot=snapshot,
@@ -420,9 +430,7 @@ class Session:
                 "page_timeout", "The page did not answer in time. Please try again."
             ) from None
         if reply.snapshot is None:
-            raise TurnError(
-                "page_unreadable", "I can't read this page. Try again on a regular web page."
-            )
+            raise TurnError("page_unreadable", PAGE_UNREADABLE)
         return reply.snapshot
 
     async def request_screenshot(self, turn_id: str, ref: str | None) -> Screenshot:

@@ -27,7 +27,8 @@ documents, including "continue" after part of one was read aloud.
 charts, graphs, diagrams, layout, or what is on the screen. Also follow-up questions \
 about an image or picture that was just described.
 - actor: doing something on the page or in the browser: click, press, follow a link, \
-type, fill in a form, choose an option, scroll, go back, open a site, switch tabs.
+type, fill in a form, choose an option, scroll, go back, open a site, switch tabs, \
+move to a field such as the search box, search the site, or search the web for a website.
 - advisor: money and risk: the total cost and what the user will pay, fees, hidden \
 charges, whether a deal is fair, tricks or dark patterns, fine print and terms.
 - watcher: watching a page and telling the user later when something changes, such as a \

@@ -76,6 +76,73 @@ def test_something_that_is_not_on_the_page_is_not_guessed():
     assert "can't find" in " ".join(result.speech)
 
 
+def test_moving_to_a_field_focuses_it_and_presses_nothing():
+    page = FakePage(FORM_SNAPSHOT)
+    with session() as client:
+        result = client.ask("go to the city field", page=page)
+    assert tool_calls(result) == [("focus", "e4", {})]
+    assert page.pressed == []
+    assert "I moved to City." in result.speech
+
+
+def test_moving_to_a_private_field_hands_it_to_the_user():
+    page = FakePage(SHOP_SNAPSHOT)
+    with session() as client:
+        result = client.ask("move to the password field", page=page)
+    assert tool_calls(result) == [("focus", "e7", {})]
+    assert " ".join(result.speech).startswith("Password is private")
+
+
+def test_a_web_search_opens_the_results_for_the_users_words():
+    page = FakePage(SHOP_SNAPSHOT)
+    with session() as client:
+        result = client.ask("search the web for waterproof hiking boots", page=page)
+    assert tool_calls(result) == [("web_search", None, {"query": "waterproof hiking boots"})]
+    assert "I searched the web for waterproof hiking boots." in result.speech
+
+
+class NewTabPage(FakePage):
+    """Chrome's new-tab page: no script may read it, until a site is opened from it."""
+
+    def __init__(self) -> None:
+        super().__init__(SHOP_SNAPSHOT)
+        self.left = False
+
+    def snapshot(self):  # type: ignore[override]
+        return super().snapshot() if self.left else None
+
+    def run(self, call):  # type: ignore[override]
+        self.left = call["name"] in ("open_url", "web_search")
+        return super().run(call)
+
+
+def test_the_web_can_be_searched_from_a_page_that_cannot_be_read():
+    llm = MockLLM()
+    settings = Settings()
+    page = NewTabPage()
+    with session(Deps(settings=settings, respond=model_responder(settings, llm))) as client:
+        result = client.ask("search the web for hiking boots", page=page)
+    assert tool_calls(result) == [("web_search", None, {"query": "hiking boots"})]
+    assert "I searched the web for hiking boots." in result.speech
+    assert result.error is None
+    asked = next(m for m in llm.specialist_requests[0].messages if m.role == "user")
+    assert "cannot be read or acted on" in asked.content
+
+
+def test_a_named_site_is_opened_from_a_page_that_cannot_be_read():
+    with session() as client:
+        result = client.ask("search for amazon.in in the search bar", page=NewTabPage())
+    assert tool_calls(result) == [("open_url", None, {"url": "amazon.in"})]
+    assert "I opened amazon.in." in result.speech
+
+
+def test_other_requests_on_a_page_that_cannot_be_read_still_say_so():
+    with session() as client:
+        result = client.ask("what is this page?", page=NewTabPage())
+    assert result.error["code"] == "page_unreadable"
+    assert "can't read this page" in result.error["message"]
+
+
 def test_a_failed_action_is_spoken():
     page = FakePage(SHOP_SNAPSHOT)
     page.run = lambda call: {"ok": False, "error": "disabled"}  # type: ignore[method-assign]
@@ -256,10 +323,12 @@ def test_the_actor_gets_the_tools_and_page_as_data():
         "click",
         "type",
         "select",
+        "focus",
         "scroll",
         "go_back",
         "switch_tab",
         "open_url",
+        "web_search",
         "ask_user",
     ]
     assert "4,499" in first.messages[-1].content

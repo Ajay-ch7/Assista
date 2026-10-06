@@ -31,6 +31,14 @@ _FIELDS = ("textbox", "searchbox")
 _CONTROLS = ("button", "link", "checkbox", "radio", "switch", "tab", "menuitem")
 _SUBMIT = re.compile(r"\b(place|order|submit|pay|buy|send|sign|book|confirm|continue)\b", re.I)
 _FILL_FORM = re.compile(r"\b(fill|complete)\b.*\bform\b|^(continue|next|carry on|go on|done)\b")
+_WEB_SEARCH = re.compile(
+    r"^(?:search the web for|google|look up|find (?:me )?(?:a )?(?:web)?sites? (?:for|about)) (.+)$"
+)
+_SEARCH_FOR = re.compile(r"^search for (.+?)(?: in the search(?: bar| box)?)?$")
+# "Go to checkout" is a link to press; "go to the search box" is a field to move to.
+_MOVE_TO = re.compile(
+    r"^(?:move to|focus on|go to(?=.* (?:field|box|bar)$)) (?:the )?(.+?)(?: field| box| bar)?$"
+)
 _STOPWORDS = set(
     "a an the to it this that on in of for my me please button link page go and".split()
 )
@@ -80,6 +88,19 @@ def _step(step: str, page: dict) -> list[LLMEvent]:
         return _call("switch_tab", query=tab.group(1))
     if site := re.search(r"\bopen (\S+\.\S+)", text):
         return _call("open_url", url=site.group(1))
+    if web := _WEB_SEARCH.search(text):
+        return _call("web_search", query=web.group(1))
+    # "Search for amazon.in" on a page with no search box, such as the new-tab page.
+    wanted = _SEARCH_FOR.search(text)
+    if wanted and not any(n.get("role") == "searchbox" for n in page.get("nodes", [])):
+        words = wanted.group(1)
+        if re.fullmatch(r"[\w-]+(\.[\w-]+)+", words):
+            return _call("open_url", url=words)
+        return _call("web_search", query=words)
+    if moved := _MOVE_TO.search(text):
+        field = _find(page, moved.group(1), (*_FIELDS, "combobox", "heading"))
+        if field:
+            return _call("focus", ref=field["ref"])
     typed = re.search(
         r"^(?:type|enter|write|put) (.+?) (?:in|into|in to) (?:the )?(.+?)(?: field| box)?$",
         step,
@@ -168,6 +189,10 @@ def _summary(results: Sequence[str], page: dict) -> str:
             sentences.append(f"I switched to the tab {target}.")
         elif action == "open_url":
             sentences.append(f"I opened {detail}.")
+        elif action == "focus":
+            sentences.append(f"I moved to {target}.")
+        elif action == "web_search":
+            sentences.append(f"I searched the web for {detail}.")
     if not sentences:
         return "There was nothing for me to do."
     return f"Done. {' '.join(sentences)} {_where(page)}"

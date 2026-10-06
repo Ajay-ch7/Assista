@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+PAGE_UNREADABLE = "I can't read this page. Try again on a regular web page."
+
 
 class TurnError(Exception):
     """Ends the turn with a sentence the user will hear."""

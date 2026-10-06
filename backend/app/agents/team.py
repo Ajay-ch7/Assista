@@ -19,6 +19,7 @@ from app.agents.document import DocumentReader, document_context
 from app.agents.reader import Reader
 from app.agents.router import SpecialistName, route
 from app.agents.vision import PageVision, Vision
+from app.errors import PAGE_UNREADABLE, TurnError
 from app.llm.base import LLMClient
 
 log = logging.getLogger("assista.team")
@@ -74,6 +75,8 @@ class Team:
             name = await route(self.llm, ctx.text, ctx.memory, self.router_model)
             specialist = self.pick(name, ctx)
             log.info("routed to %s, handled by %s", name, specialist.name)
+            if ctx.snapshot.flags.unreadable and name != "actor":
+                raise TurnError("page_unreadable", PAGE_UNREADABLE)
             if name == "advisor" and ctx.snapshot.flags.pdf:
                 # Terms and prices in a PDF are judged from its text.
                 ctx = await document_context(ctx)

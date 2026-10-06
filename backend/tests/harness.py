@@ -203,7 +203,7 @@ class FakePage:
         self.calls.append(call)
         self.held, self.asked = None, False
         name, args = call["name"], call.get("args", {})
-        if name in ("go_back", "switch_tab", "open_url") or (
+        if name in ("go_back", "switch_tab", "open_url", "web_search") or (
             name == "scroll" and "ref" not in call
         ):
             detail = args.get("direction") or args.get("url") or args.get("query")

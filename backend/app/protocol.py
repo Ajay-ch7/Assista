@@ -75,6 +75,9 @@ class SnapshotFlags(_Model):
     hidden_text_removed: int = 0
     pdf: bool = False
     """The tab shows a PDF. Its text is not in the snapshot; ask for the file instead."""
+    unreadable: bool = False
+    """Set by the backend, never sent: the tab is a page no script may run on, such as the
+    new-tab page. Only browser actions work there: opening a site, searching, switching."""
 
 
 class PageSnapshot(_Model):

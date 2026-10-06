@@ -41,7 +41,8 @@ _ROUTES = [
     (
         "actor",
         r"\b(click|press|tap|type|enter|fill|select|choose|tick|untick|scroll|go back|"
-        r"go to|open|switch|submit|add .+ to (the )?cart|place .*order|sign in|log in)\b",
+        r"go to|move to|focus|open|switch|submit|search|look up|google|"
+        r"add .+ to (the )?cart|place .*order|sign in|log in)\b",
     ),
     (
         "advisor",
