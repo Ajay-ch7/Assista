@@ -79,11 +79,13 @@ One WebSocket per session between the voice shell and the backend. JSON text fra
 | Extension to backend | `transcript` | Text-mode turn; skips speech-to-text |
 | Extension to backend | `snapshot` | Reply to `request_snapshot` |
 | Extension to backend | `screenshot` | Reply to `request_screenshot`; full view or cropped element |
+| Extension to backend | `document` | Reply to `request_document`; the PDF on show as base64 data, or an error |
 | Extension to backend | `tool_result` | Result of a `tool_call`, including `held_by_gate` |
 | Extension to backend | `confirm` | The user's yes or no to a `confirm_request` |
 | Extension to backend | `settings` | Verbosity and private-mode state |
 | Backend to extension | `transcript_final` | What the user said |
 | Backend to extension | `request_snapshot`, `request_screenshot` | Ask for page state |
+| Backend to extension | `request_document` | Ask for the PDF the tab shows; the extension fetches only the tab's own address |
 | Backend to extension | `tool_call` | One action with a snapshot reference id |
 | Backend to extension | `speak_text`, binary chunks | One sentence of reply and its audio |
 | Backend to extension | `cue` | Play a named sound cue |
@@ -104,12 +106,13 @@ Every message carries `turn_id`. In text mode the backend sends `speak_text` wit
   "tables": [{"ref": "t1", "caption": "...", "rows": [["..."]]}],
   "images": [{"ref": "i3", "alt": "", "width": 400, "height": 300}],
   "rules": {"preticked": ["e40"], "countdowns": [{"ref": "e51", "seconds_left": 280}]},
-  "flags": {"has_canvas": false, "thin": false, "clutter_removed": 14, "hidden_text_removed": 2}
+  "flags": {"has_canvas": false, "thin": false, "clutter_removed": 14, "hidden_text_removed": 2, "pdf": false}
 }
 ```
 
 - `ref` values are valid only for their `snapshot_id`. Action tools reject a `ref` from an older snapshot.
 - `sensitive` nodes never carry a `value`.
+- `pdf` is true when the tab shows a PDF. Such a snapshot has no nodes; the backend sends `request_document` for the file.
 - `thin` is true when images lack alt text, canvas or chart elements are present, buttons are unlabeled, or a full screen holds very little text.
 
 ### 5.3 Specialist response

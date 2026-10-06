@@ -6,6 +6,7 @@ import {
   type Ack,
   type ActionReply,
   type CaptureReply,
+  type DocumentReply,
   type ScreenshotReply,
   type SnapshotReply,
   type ToContent,
@@ -13,6 +14,7 @@ import {
   type ToWorker,
   type ToolRequest,
 } from '../shared/messages';
+import { fetchDocument, isPdfUrl, pdfSnapshot, servesPdf } from './documents';
 import { cropImage } from './screenshot';
 import { findTab, normalizeUrl, pickTargetTab } from './tabs';
 
@@ -61,7 +63,7 @@ async function toggleTalk(tab?: chrome.tabs.Tab): Promise<void> {
 async function handle(
   msg: ToWorker,
   sender: chrome.runtime.MessageSender,
-): Promise<Ack | SnapshotReply | ScreenshotReply | ActionReply> {
+): Promise<Ack | SnapshotReply | ScreenshotReply | DocumentReply | ActionReply> {
   switch (msg.kind) {
     case 'talk_key':
       return sendToPanel({ to: 'panel', kind: 'talk_key', phase: msg.phase }, sender.tab);
@@ -71,6 +73,8 @@ async function handle(
       return snapshotOfTargetTab();
     case 'get_screenshot':
       return screenshotOfTargetTab(msg.ref);
+    case 'get_document':
+      return documentOfTargetTab();
     case 'run_tool':
       return runTool(msg.tool);
   }
@@ -118,11 +122,23 @@ async function sendToContent<R>(tabId: number, msg: ToContent): Promise<R | null
 async function snapshotOfTargetTab(): Promise<SnapshotReply> {
   const tab = await targetTab();
   if (tab?.id === undefined) return { ok: false, error: 'no_tab' };
+  // A PDF has no page to read; the backend asks for the file instead.
+  if (isPdfUrl(tab.url)) return { ok: true, snapshot: pdfSnapshot(tab) };
   const reply = await sendToContent<SnapshotReply>(tab.id, {
     to: 'content',
     kind: 'build_snapshot',
   });
-  return reply ?? { ok: false, error: 'unreachable_page' };
+  if (reply) return reply;
+  if (await servesPdf(tab.url)) return { ok: true, snapshot: pdfSnapshot(tab) };
+  return { ok: false, error: 'unreachable_page' };
+}
+
+/** Fetches the PDF the target tab shows. Never any other address. */
+async function documentOfTargetTab(): Promise<DocumentReply> {
+  const tab = await targetTab();
+  if (tab?.id === undefined || !tab.url) return { ok: false, error: 'no_tab' };
+  if (!isPdfUrl(tab.url) && !(await servesPdf(tab.url))) return { ok: false, error: 'not_pdf' };
+  return fetchDocument(tab.url);
 }
 
 /**

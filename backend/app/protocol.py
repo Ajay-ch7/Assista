@@ -73,6 +73,8 @@ class SnapshotFlags(_Model):
     thin: bool = False
     clutter_removed: int = 0
     hidden_text_removed: int = 0
+    pdf: bool = False
+    """The tab shows a PDF. Its text is not in the snapshot; ask for the file instead."""
 
 
 class PageSnapshot(_Model):
@@ -121,6 +123,16 @@ class ScreenshotReply(_Message):
     error: str | None = None
 
 
+class DocumentReply(_Message):
+    """Reply to request_document: the PDF on show, as base64 data."""
+
+    type: Literal["document"] = "document"
+    url: str | None = None
+    data: str | None = None
+    mime: str | None = None
+    error: str | None = None
+
+
 class ToolResult(_Message):
     type: Literal["tool_result"] = "tool_result"
     call_id: str
@@ -148,6 +160,7 @@ ClientMessage = Annotated[
     | Transcript
     | SnapshotReply
     | ScreenshotReply
+    | DocumentReply
     | ToolResult
     | Confirm
     | SettingsUpdate,
@@ -171,6 +184,13 @@ class RequestSnapshot(_Message):
 class RequestScreenshot(_Message):
     type: Literal["request_screenshot"] = "request_screenshot"
     ref: str | None = None
+
+
+class RequestDocument(_Message):
+    """Asks for the file of the PDF on show. The extension fetches only the tab's own
+    address, so no address is sent."""
+
+    type: Literal["request_document"] = "request_document"
 
 
 class ToolCall(_Message):
@@ -217,6 +237,7 @@ ServerMessage = (
     TranscriptFinal
     | RequestSnapshot
     | RequestScreenshot
+    | RequestDocument
     | ToolCall
     | SpeakText
     | Cue

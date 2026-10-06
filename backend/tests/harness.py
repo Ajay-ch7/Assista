@@ -3,6 +3,7 @@ with no browser, microphone or speaker."""
 
 from __future__ import annotations
 
+import base64
 import copy
 import json
 import re
@@ -315,11 +316,12 @@ class TextModeClient:
         error: str | None = None,
         screenshot: Any = SCREENSHOT,
         page: FakePage | None = None,
+        document: bytes | dict[str, Any] | None = None,
     ) -> TurnResult:
         """Sends one text-mode turn and plays the extension's part until it ends."""
         turn_id = self.next_turn_id()
         self.send({"type": "transcript", "turn_id": turn_id, "text": text})
-        return self.finish(turn_id, snapshot, error, screenshot, page)
+        return self.finish(turn_id, snapshot, error, screenshot, page, document)
 
     def say(
         self, *chunks: bytes, snapshot: Any = SHOP_SNAPSHOT, sample_rate: int = 16000
@@ -340,9 +342,11 @@ class TextModeClient:
         error: str | None = None,
         screenshot: Any = SCREENSHOT,
         page: FakePage | None = None,
+        document: bytes | dict[str, Any] | None = None,
     ) -> TurnResult:
         """Collects the turn's messages, answering the backend's requests for the page,
-        until done or error. With `page`, snapshots and action tools go to it."""
+        until done or error. With `page`, snapshots and action tools go to it. `document`
+        is the PDF file sent on request_document, or the reply's fields when it fails."""
         result = TurnResult()
         while True:
             frame = self.ws.receive()
@@ -372,6 +376,13 @@ class TextModeClient:
             if msg["type"] == "request_screenshot" and screenshot is not NO_REPLY:
                 ref = {"ref": msg["ref"]} if msg.get("ref") else {}
                 self.send({"type": "screenshot", "turn_id": msg["turn_id"], **ref, **screenshot})
+            if msg["type"] == "request_document":
+                if isinstance(document, bytes):
+                    data = base64.b64encode(document).decode()
+                    reply = {"url": snapshot["url"], "data": data, "mime": "application/pdf"}
+                else:
+                    reply = document or {"data": None, "error": "not_pdf"}
+                self.send({"type": "document", "turn_id": msg["turn_id"], **reply})
             if msg["type"] in ("done", "error") and msg["turn_id"] == turn_id:
                 return result
 

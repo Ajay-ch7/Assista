@@ -242,6 +242,8 @@ export function buildSnapshot(doc: Document = document): PageSnapshot {
       thin: isThin(doc, build.nodes, build.images, build),
       clutter_removed: build.clutterRemoved,
       hidden_text_removed: build.hiddenRemoved,
+      // Chrome's PDF viewer page, when a content script runs in it.
+      ...(doc.contentType === 'application/pdf' ? { pdf: true } : {}),
     },
   };
 }

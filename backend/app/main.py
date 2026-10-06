@@ -7,6 +7,8 @@ one before it.
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import json
 import logging
 import uuid
@@ -20,6 +22,7 @@ from pydantic import BaseModel, ValidationError
 from app.agents.base import (
     ActionResult,
     ConfirmedAction,
+    DocumentFile,
     HeldAction,
     PageAccess,
     Screenshot,
@@ -40,9 +43,11 @@ from app.protocol import (
     AudioStart,
     Confirm,
     ConfirmRequest,
+    DocumentReply,
     Done,
     Error,
     PageSnapshot,
+    RequestDocument,
     RequestScreenshot,
     RequestSnapshot,
     ScreenshotReply,
@@ -72,6 +77,16 @@ _SCREENSHOT_ERRORS = {
     "timeout": "The page did not send me a picture in time.",
 }
 _SCREENSHOT_FAILED = "I could not capture the screen."
+
+# What the user hears when a PDF cannot be fetched, by the extension's error code.
+_DOCUMENT_ERRORS = {
+    "too_large": "This PDF is too big for me to read. I can read files up to 10 megabytes.",
+    "not_pdf": "I could not get a PDF file from this tab.",
+    "fetch_failed": "I could not download this PDF.",
+    "no_tab": "I can't find a document to read.",
+    "timeout": "The PDF took too long to download.",
+}
+_DOCUMENT_FAILED = "I could not open this PDF."
 
 
 Responder = Callable[[TurnContext], AsyncIterator[str]]
@@ -106,6 +121,7 @@ class Deps:
     tts: TextToSpeech | None = None
     snapshot_timeout: float = 10.0
     screenshot_timeout: float = 10.0
+    document_timeout: float = 30.0
     action_timeout: float = 20.0
     confirm_timeout: float = 10.0
 
@@ -188,7 +204,7 @@ class Session:
             case SettingsUpdate():
                 self.verbosity = msg.verbosity
                 self.private_mode = msg.private_mode
-            case SnapshotReply() | ScreenshotReply() | ToolResult() | Confirm():
+            case SnapshotReply() | ScreenshotReply() | DocumentReply() | ToolResult() | Confirm():
                 self._resolve(msg.turn_id, msg.type, msg)
 
     def _resolve(self, turn_id: str, kind: str, msg: Any) -> None:
@@ -418,6 +434,24 @@ class Session:
             raise ScreenshotUnavailable(code, _SCREENSHOT_ERRORS.get(code, _SCREENSHOT_FAILED))
         return Screenshot(data=reply.image, mime=reply.mime or "image/png")
 
+    async def request_document(self, turn_id: str) -> DocumentFile:
+        try:
+            reply: DocumentReply = await self._request(
+                turn_id, "document", RequestDocument(turn_id=turn_id), self.deps.document_timeout
+            )
+        except TimeoutError:
+            reply = DocumentReply(turn_id=turn_id, error="timeout")
+        data = b""
+        if reply.data:
+            try:
+                data = base64.b64decode(reply.data, validate=True)
+            except (binascii.Error, ValueError):
+                reply = DocumentReply(turn_id=turn_id, error="bad_data")
+        if not data:
+            code = (reply.error or "failed").split(":")[0]
+            raise TurnError("document_" + code, _DOCUMENT_ERRORS.get(code, _DOCUMENT_FAILED))
+        return DocumentFile(url=reply.url or "", data=data)
+
     async def act(
         self, turn_id: str, name: str, snapshot_id: str, ref: str | None, args: dict[str, Any]
     ) -> ActionResult:
@@ -472,6 +506,9 @@ class _SessionPage(PageAccess):
 
     async def snapshot(self) -> PageSnapshot:
         return await self._session._request_snapshot(self._turn_id)
+
+    async def document(self) -> DocumentFile:
+        return await self._session.request_document(self._turn_id)
 
     async def act(
         self, name: str, snapshot_id: str, ref: str | None, args: dict[str, Any]

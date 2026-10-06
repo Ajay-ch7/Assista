@@ -119,3 +119,26 @@ test('tables come from the snapshot and charts from a screenshot', async ({
   expect(of(received, 'request_screenshot')).toHaveLength(1);
   expect(chart).toEqual(['I looked at the screen.']);
 });
+
+test('a PDF in the tab is fetched by the extension and read', async ({ context, openPanel }) => {
+  const pdf = await context.newPage();
+  // Chrome may show the file in its viewer or treat it as a download; the tab keeps the address.
+  await pdf.goto(demoUrl('guide.pdf')).catch(() => undefined);
+  const { panel, sent } = await recordedPanel(openPanel);
+  await pdf.bringToFront();
+
+  const headline = await ask(panel, 'what is this document?');
+  expect(headline[0]).toBe('This page is titled Riverside Outfitters Returns and Warranty Guide.');
+  const [file] = of(sent, 'document');
+  expect(file).toMatchObject({ mime: 'application/pdf', url: demoUrl('guide.pdf') });
+  expect(
+    Buffer.from(file.data as string, 'base64')
+      .subarray(0, 5)
+      .toString(),
+  ).toBe('%PDF-');
+
+  const full = await ask(panel, 'read page 2');
+  expect(full.slice(0, 2)).toEqual(['Page 2.', 'Warranty.']);
+  // The file was fetched once, and the follow-up was read from memory.
+  expect(of(sent, 'document')).toHaveLength(1);
+});

@@ -15,6 +15,7 @@ from app.agents.base import (
     SpecialistResponse,
     TurnContext,
 )
+from app.agents.document import DocumentReader, document_context
 from app.agents.reader import Reader
 from app.agents.router import SpecialistName, route
 from app.agents.vision import PageVision, Vision
@@ -42,6 +43,7 @@ class Team:
         self.router_model = router_model
         reader = Reader(llm, model)
         self.page_vision = PageVision(llm, model)
+        self.document_reader = DocumentReader(llm, model)
         self.specialists: dict[SpecialistName, Specialist] = {
             "reader": reader,
             "advisor": Advisor(llm, model),
@@ -52,6 +54,9 @@ class Team:
 
     def pick(self, name: SpecialistName, ctx: TurnContext) -> Specialist:
         specialist = self.specialists[name]
+        # A PDF has no page to read: its file is fetched and read instead.
+        if name == "reader" and ctx.snapshot.flags.pdf:
+            return self.document_reader
         # A page the snapshot cannot describe is read from a screenshot as well, unless
         # private mode keeps pictures of the screen on the device.
         # A question about a table is answered from the table, even on a page that is thin
@@ -69,6 +74,9 @@ class Team:
             name = await route(self.llm, ctx.text, ctx.memory, self.router_model)
             specialist = self.pick(name, ctx)
             log.info("routed to %s, handled by %s", name, specialist.name)
+            if name == "advisor" and ctx.snapshot.flags.pdf:
+                # Terms and prices in a PDF are judged from its text.
+                ctx = await document_context(ctx)
         async for piece in run_specialist(specialist, ctx):
             yield piece
 

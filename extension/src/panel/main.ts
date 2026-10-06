@@ -6,6 +6,7 @@ import {
   isAddressedTo,
   type Ack,
   type ActionReply,
+  type DocumentReply,
   type ScreenshotReply,
   type SnapshotReply,
   type ToWorker,
@@ -334,6 +335,9 @@ function onBackendMessage(msg: ServerMessage): void {
     case 'request_screenshot':
       void replyWithScreenshot(msg.turn_id, msg.ref);
       break;
+    case 'request_document':
+      void replyWithDocument(msg.turn_id);
+      break;
     case 'speak_text':
       cues.stopThinking();
       log('assistant', msg.text);
@@ -406,6 +410,24 @@ async function replyWithScreenshot(turn: string, ref?: string): Promise<void> {
     reply.ok
       ? { type: 'screenshot', turn_id: turn, image: reply.image, mime: reply.mime, ref }
       : { type: 'screenshot', turn_id: turn, image: null, ref, error: reply.error },
+  );
+}
+
+async function replyWithDocument(turn: string): Promise<void> {
+  let reply: DocumentReply;
+  try {
+    reply = await chrome.runtime.sendMessage<ToWorker, DocumentReply>({
+      to: 'worker',
+      kind: 'get_document',
+    });
+  } catch (error) {
+    reply = { ok: false, error: String(error) };
+  }
+  if (turn !== activeTurn) return;
+  socket.send(
+    reply.ok
+      ? { type: 'document', turn_id: turn, url: reply.url, data: reply.data, mime: reply.mime }
+      : { type: 'document', turn_id: turn, data: null, error: reply.error },
   );
 }
 

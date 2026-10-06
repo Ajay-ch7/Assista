@@ -10,6 +10,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any, ClassVar, Literal
 
+from app.documents.pdf import Document
 from app.errors import TurnError
 from app.llm.base import Message
 from app.llm.page_data import PAGE_DATA_RULES, wrap_page_data
@@ -48,6 +49,8 @@ class SessionMemory:
     """Each specialist's latest follow_up_context."""
     held: HeldAction | None = None
     """The action the confirmation gate is holding, once the user has been asked."""
+    document: OpenDocument | None = None
+    """The PDF last read, kept so follow-ups and "continue" need no new download."""
 
     @property
     def last(self) -> Exchange | None:
@@ -56,6 +59,25 @@ class SessionMemory:
     def remember(self, request: str, specialist: str, response: SpecialistResponse) -> None:
         self.history.append(Exchange(request, response.speech, specialist))
         self.contexts[specialist] = response.follow_up_context
+
+
+@dataclass
+class OpenDocument:
+    """A PDF that has been read, and where reading it aloud got to."""
+
+    document: Document
+    page: int = 0
+    """Index of the page to read next."""
+    offset: int = 0
+    """Characters of that page already read."""
+
+
+@dataclass(frozen=True)
+class DocumentFile:
+    """The bytes of the PDF the user's tab shows."""
+
+    url: str
+    data: bytes
 
 
 @dataclass(frozen=True)
@@ -118,6 +140,11 @@ class PageAccess(ABC):
         """A fresh snapshot of the tab, with new refs. Raises TurnError when the page
         cannot be read."""
         raise TurnError("page_unreadable", "I can't read this page right now.")
+
+    async def document(self) -> DocumentFile:
+        """The PDF the tab shows, fetched by the extension. Raises TurnError when it
+        cannot be had."""
+        raise TurnError("document_unavailable", "I can't open this document right now.")
 
     async def act(
         self, name: str, snapshot_id: str, ref: str | None, args: dict[str, Any]

@@ -21,7 +21,8 @@ You route requests for Assista, a voice assistant for blind and low-vision peopl
 browsing the web. Pick the one specialist that should handle the user's request.
 
 - reader: what the page is, where the user is, what it says, finding facts or answers \
-on the page, reading sections, headings, links, lists and tables.
+on the page, reading sections, headings, links, lists and tables. Also reading PDF \
+documents, including "continue" after part of one was read aloud.
 - vision: anything about how something looks: images, photos, pictures, logos, colours, \
 charts, graphs, diagrams, layout, or what is on the screen. Also follow-up questions \
 about an image or picture that was just described.

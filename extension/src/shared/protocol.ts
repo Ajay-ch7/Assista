@@ -54,6 +54,16 @@ export interface ScreenshotMessage {
   error?: string;
 }
 
+/** Reply to request_document: the PDF on show, as base64 data, or null when it failed. */
+export interface DocumentMessage {
+  type: 'document';
+  turn_id: string;
+  url?: string;
+  data: string | null;
+  mime?: string;
+  error?: string;
+}
+
 export interface ToolResultMessage {
   type: 'tool_result';
   turn_id: string;
@@ -86,6 +96,7 @@ export type ClientMessage =
   | TranscriptMessage
   | SnapshotMessage
   | ScreenshotMessage
+  | DocumentMessage
   | ToolResultMessage
   | ConfirmMessage
   | SettingsMessage;
@@ -109,6 +120,12 @@ export interface RequestScreenshotMessage {
   turn_id: string;
   /** Crop to this element; the full view when absent. */
   ref?: string;
+}
+
+/** Asks for the file of the PDF on show; only ever the tab's own address is fetched. */
+export interface RequestDocumentMessage {
+  type: 'request_document';
+  turn_id: string;
 }
 
 /** One action on a snapshot reference id. */
@@ -165,6 +182,7 @@ export type ServerMessage =
   | TranscriptFinalMessage
   | RequestSnapshotMessage
   | RequestScreenshotMessage
+  | RequestDocumentMessage
   | ToolCallMessage
   | SpeakTextMessage
   | CueMessage
@@ -176,6 +194,7 @@ export const SERVER_MESSAGE_TYPES: readonly ServerMessage['type'][] = [
   'transcript_final',
   'request_snapshot',
   'request_screenshot',
+  'request_document',
   'tool_call',
   'speak_text',
   'cue',

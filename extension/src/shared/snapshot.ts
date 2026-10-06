@@ -46,6 +46,8 @@ export interface SnapshotFlags {
   thin: boolean;
   clutter_removed: number;
   hidden_text_removed: number;
+  /** The tab shows a PDF. Its text is not in the snapshot; the backend asks for the file. */
+  pdf?: boolean;
 }
 
 export interface PageSnapshot {

@@ -11,6 +11,7 @@ export type ToWorker =
   | { to: 'worker'; kind: 'stop_key' }
   | { to: 'worker'; kind: 'get_snapshot' }
   | { to: 'worker'; kind: 'get_screenshot'; ref?: string }
+  | { to: 'worker'; kind: 'get_document' }
   | { to: 'worker'; kind: 'run_tool'; tool: ToolRequest };
 
 export type ToPanel =
@@ -45,6 +46,10 @@ export type CaptureReply = ({ ok: true } & CaptureFrame) | { ok: false; error: s
 /** A screenshot as base64 image data. */
 export type ScreenshotReply =
   { ok: true; image: string; mime: string } | { ok: false; error: string };
+
+/** The PDF on show, as base64 data. */
+export type DocumentReply =
+  { ok: true; url: string; data: string; mime: string } | { ok: false; error: string };
 
 /** One action tool to run, as the backend's tool_call asked for it. */
 export interface ToolRequest {
