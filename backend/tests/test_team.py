@@ -104,7 +104,6 @@ def test_the_router_runs_on_the_router_model_and_the_reader_on_the_main_model():
 @pytest.mark.parametrize(
     ("text", "reply"),
     [
-        ("click add to cart", "I can't click, type or move between pages yet."),
         ("tell me when the price drops", "I can't watch pages for changes yet."),
     ],
 )

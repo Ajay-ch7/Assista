@@ -17,10 +17,14 @@ from app.llm.base import (
     ToolCall,
     ToolCallRequest,
 )
+from app.llm.mock_actor import act
 
 _PAGE_DATA = re.compile(r"<page_data_\w+>\n(.*)\n</page_data_\w+>", re.DOTALL)
 # Vision's system prompts contain this role line (app/agents/vision.py). See _look.
 _VISION_ROLE = "\nYou are Vision."
+
+# The Actor's system prompts contain this role line (app/agents/actor.py).
+_ACTOR_ROLE = "\nYou are the Actor."
 
 # Router requests open with this (app/agents/router.py). The mock routes them by keyword.
 _ROUTER_SYSTEM = "You route requests"
@@ -33,8 +37,8 @@ _ROUTES = [
     ),
     (
         "actor",
-        r"\b(click|press|tap|type|fill|select|choose|scroll|go back|go to|open|switch|"
-        r"add .+ to (the )?cart|sign in|log in)\b",
+        r"\b(click|press|tap|type|enter|fill|select|choose|tick|untick|scroll|go back|"
+        r"go to|open|switch|submit|add .+ to (the )?cart|place .*order|sign in|log in)\b",
     ),
     ("advisor", r"\b(total|cost|fees?|charges?|hidden|trick|terms|fine print)\b"),
 ]
@@ -58,6 +62,10 @@ class MockLLM(LLMClient):
         routing = request.system.startswith(_ROUTER_SYSTEM)
         if self._script and not routing:
             for event in self._script.pop(0):
+                yield event
+            return
+        if _ACTOR_ROLE in request.system:
+            for event in act(request):
                 yield event
             return
         if _VISION_ROLE in request.system:
@@ -148,6 +156,11 @@ def _route(prompt: str) -> str:
     previous = re.search(r"handled by (\w+)", prompt)
     if previous and previous.group(1) == "vision" and _FOLLOW_UP.search(text):
         return "vision"
+    # An answer to the Actor's question, or "continue" after a private field.
+    answer = re.search(r"^Previous answer: (.*)$", prompt, re.MULTILINE)
+    if previous and previous.group(1) == "actor" and answer:
+        if "What should I put for" in answer.group(1) or "say continue" in answer.group(1):
+            return "actor"
     return "reader"
 
 

@@ -10,6 +10,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any, ClassVar, Literal
 
+from app.errors import TurnError
 from app.llm.base import Message
 from app.llm.page_data import PAGE_DATA_RULES, wrap_page_data
 from app.protocol import PageSnapshot, Verbosity
@@ -45,6 +46,8 @@ class SessionMemory:
     history: deque[Exchange] = field(default_factory=lambda: deque(maxlen=HISTORY_TURNS))
     contexts: dict[str, dict[str, Any]] = field(default_factory=dict)
     """Each specialist's latest follow_up_context."""
+    held: HeldAction | None = None
+    """The action the confirmation gate is holding, once the user has been asked."""
 
     @property
     def last(self) -> Exchange | None:
@@ -72,6 +75,35 @@ class ScreenshotUnavailable(Exception):
         self.reason = reason
 
 
+@dataclass(frozen=True)
+class ActionResult:
+    """What the extension did with one action tool."""
+
+    ok: bool
+    held: bool = False
+    """True when the confirmation gate held the action; nothing was done."""
+    result: dict[str, Any] = field(default_factory=dict)
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class HeldAction:
+    """An action waiting in the extension for the user's yes."""
+
+    confirm_id: str
+    control: str
+    """The name of the control that would be pressed."""
+
+
+@dataclass(frozen=True)
+class ConfirmedAction:
+    """A held action the user said yes to, and how running it went."""
+
+    control: str
+    ok: bool
+    error: str | None = None
+
+
 class PageAccess(ABC):
     """What a specialist may ask of the user's tab while it works on a turn."""
 
@@ -81,6 +113,22 @@ class PageAccess(ABC):
 
         Raises ScreenshotUnavailable when it cannot be captured.
         """
+
+    async def snapshot(self) -> PageSnapshot:
+        """A fresh snapshot of the tab, with new refs. Raises TurnError when the page
+        cannot be read."""
+        raise TurnError("page_unreadable", "I can't read this page right now.")
+
+    async def act(
+        self, name: str, snapshot_id: str, ref: str | None, args: dict[str, Any]
+    ) -> ActionResult:
+        """Asks the extension to run one action tool on an element of `snapshot_id`."""
+        return ActionResult(ok=False, error="unreachable_page")
+
+    async def ask_to_confirm(self, held: HeldAction, text: str) -> None:
+        """Tells the extension the user has heard `text`, the read-back of a held action,
+        so that their next yes or no settles it."""
+        return None
 
 
 class NoPageAccess(PageAccess):
@@ -98,6 +146,8 @@ class TurnContext:
     private_mode: bool
     memory: SessionMemory = field(default_factory=SessionMemory)
     page: PageAccess = field(default_factory=NoPageAccess)
+    confirmed: ConfirmedAction | None = None
+    """Set when this turn is the user's yes to a held action, which has now run."""
 
 
 @dataclass

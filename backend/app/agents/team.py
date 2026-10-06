@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator
 
+from app.agents.actor import Actor
 from app.agents.base import (
     ConfidenceFilter,
     Specialist,
@@ -44,11 +45,7 @@ class Team:
             # Costs, fees and fine print are read from the page until the Advisor exists.
             "advisor": reader,
             "vision": Vision(llm, model),
-            "actor": NotYet(
-                "actor",
-                "I can read pages and describe what is on them, but I can't click, type "
-                "or move between pages yet.",
-            ),
+            "actor": Actor(llm, model),
             "watcher": NotYet("watcher", "I can't watch pages for changes yet."),
         }
 
@@ -62,9 +59,13 @@ class Team:
         return specialist
 
     async def respond(self, ctx: TurnContext) -> AsyncIterator[str]:
-        name = await route(self.llm, ctx.text, ctx.memory, self.router_model)
-        specialist = self.pick(name, ctx)
-        log.info("routed to %s, handled by %s", name, specialist.name)
+        if ctx.confirmed is not None:
+            # The user's yes to a held action: the Actor reports what happened.
+            specialist = self.specialists["actor"]
+        else:
+            name = await route(self.llm, ctx.text, ctx.memory, self.router_model)
+            specialist = self.pick(name, ctx)
+            log.info("routed to %s, handled by %s", name, specialist.name)
         async for piece in run_specialist(specialist, ctx):
             yield piece
 

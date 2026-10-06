@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Delivery details - Riverside Outfitters</title>
+    <style>
+      body {
+        font:
+          16px/1.5 system-ui,
+          sans-serif;
+        margin: 0;
+        color: #1c1c1c;
+        background: #ffffff;
+      }
+      header,
+      main {
+        max-width: 40rem;
+        margin: 0 auto;
+        padding: 1rem;
+      }
+      form {
+        display: grid;
+        gap: 0.5rem;
+        max-width: 24rem;
+      }
+      input,
+      select,
+      button {
+        font: inherit;
+        padding: 0.4rem 0.6rem;
+      }
+      .total {
+        font-weight: 700;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <a href="shop.html">Riverside Outfitters</a>
+    </header>
+
+    <main id="main">
+      <h1>Delivery details</h1>
+      <p>Trail Backpack 30L, one item.</p>
+      <p class="total">Order total: 4,598 rupees</p>
+
+      <form id="order">
+        <label for="name">Full name</label>
+        <input id="name" name="name" autocomplete="name" />
+
+        <label for="phone">Phone</label>
+        <input id="phone" name="phone" type="tel" autocomplete="tel" />
+
+        <label for="city">City</label>
+        <input id="city" name="city" autocomplete="address-level2" />
+
+        <label for="speed">Delivery speed</label>
+        <select id="speed" name="speed">
+          <option>Standard</option>
+          <option>Express</option>
+        </select>
+
+        <label for="otp">One-time code</label>
+        <input id="otp" name="otp" inputmode="numeric" autocomplete="one-time-code" />
+
+        <button type="submit">Place order</button>
+      </form>
+    </main>
+
+    <script>
+      // The order is "placed" in the page itself, so the demo needs no server. The
+      // one-time code is checked for presence only and never shown.
+      document.getElementById('order').addEventListener('submit', (event) => {
+        event.preventDefault();
+        const name = document.getElementById('name').value.trim() || 'customer';
+        const city = document.getElementById('city').value.trim() || 'your city';
+        const speed = document.getElementById('speed').value;
+        document.title = 'Order placed - Riverside Outfitters';
+        const main = document.getElementById('main');
+        main.replaceChildren();
+        const heading = document.createElement('h1');
+        heading.textContent = `Thank you, ${name}`;
+        const summary = document.createElement('p');
+        summary.textContent = `Your order RO-20418 is placed. It will reach ${city} by ${speed} delivery.`;
+        main.append(heading, summary);
+      });
+    </script>
+  </body>
+</html>
