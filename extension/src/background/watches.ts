@@ -143,5 +143,5 @@ export function createWatchEngine(deps: Deps) {
     return cancelWatch(tool);
   }
 
-  return { runTool, onValue, onAlarm, ensureAlarm };
+  return { runTool, onValue, onAlarm, ensureAlarm, announce };
 }

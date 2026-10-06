@@ -15,7 +15,9 @@ export type ToWorker =
   | { to: 'worker'; kind: 'get_screenshot'; ref?: string }
   | { to: 'worker'; kind: 'get_document' }
   | { to: 'worker'; kind: 'run_tool'; tool: ToolRequest }
-  | { to: 'worker'; kind: 'watch_value'; id: string; value: string };
+  | { to: 'worker'; kind: 'watch_value'; id: string; value: string }
+  /** A countdown on the page has this many seconds left: 120 or 30. */
+  | { to: 'worker'; kind: 'countdown'; seconds: number };
 
 export type ToPanel =
   | { to: 'panel'; kind: 'talk_key'; phase: TalkPhase }

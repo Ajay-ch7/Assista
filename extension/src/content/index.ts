@@ -10,6 +10,7 @@ import {
 import { loadWatches, onWatchesChanged } from '../store/watches';
 import { runAction } from './actions';
 import { endCapture, prepareCapture } from './capture';
+import { startCountdownWarnings } from './countdown';
 import { installKeyListener } from './keys';
 import { trackUserChoices } from './rules';
 import { StaleRefError, buildSnapshot } from './snapshot';
@@ -66,6 +67,7 @@ if (!window.__assistaContentLoaded) {
   });
   void watcher.refresh().catch(() => undefined);
   onWatchesChanged(() => void watcher.refresh().catch(() => undefined));
+  startCountdownWarnings((seconds) => tellWorker({ to: 'worker', kind: 'countdown', seconds }));
   chrome.runtime.onMessage.addListener((msg: unknown, _sender, sendResponse) => {
     if (!isAddressedTo(msg, 'content')) return false;
     switch (msg.kind) {

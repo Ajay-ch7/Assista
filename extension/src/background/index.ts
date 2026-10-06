@@ -87,6 +87,9 @@ async function handle(
     case 'watch_value':
       await watches.onValue(msg.id, msg.value);
       return { ok: true };
+    case 'countdown':
+      await watches.announce(countdownWarning(msg.seconds, sender.tab?.title));
+      return { ok: true };
   }
 }
 
@@ -127,6 +130,14 @@ async function sendToContent<R>(tabId: number, msg: ToContent): Promise<R | null
   } catch {
     return null;
   }
+}
+
+/** What the user hears when a session timer on a page is about to run out (F17). */
+function countdownWarning(seconds: number, title?: string): string {
+  const where = title ? ` on ${title}` : '';
+  return seconds > 60
+    ? `Heads up: the timer${where} has about ${Math.round(seconds / 60)} minutes left.`
+    : `The timer${where} has ${seconds} seconds left.`;
 }
 
 const watches = createWatchEngine({ targetTab, sendToContent, sendToPanel });

@@ -92,3 +92,32 @@ test('a private field is never watched', async ({ context, openPanel }) => {
   });
   expect(reply).toEqual({ ok: false, error: 'sensitive_field' });
 });
+
+test('a session timer warns at two minutes and at thirty seconds', async ({
+  context,
+  openPanel,
+}) => {
+  const booking = await context.newPage();
+  await booking.goto(demoUrl('booking.html'));
+  const { panel, sent } = await recordedPanel(openPanel);
+  const alerts = panel.locator('#log li[data-role="assistant"]');
+
+  // Five minutes are left: no warning yet.
+  await booking.waitForTimeout(2500);
+  await expect(alerts).toHaveCount(0);
+
+  // The page's own timer is moved on, so the test need not wait three minutes.
+  await booking.evaluate('left = 122');
+  await expect(alerts.last()).toHaveText(
+    'Heads up: the timer on Book a table - Saffron Kitchen has about 2 minutes left.',
+    { timeout: 15_000 },
+  );
+  await booking.evaluate('left = 32');
+  await expect(alerts.last()).toHaveText(
+    'The timer on Book a table - Saffron Kitchen has 30 seconds left.',
+    { timeout: 15_000 },
+  );
+  await expect(alerts).toHaveCount(2);
+  // Warnings come from the extension alone.
+  expect(of(sent, 'transcript')).toHaveLength(0);
+});
