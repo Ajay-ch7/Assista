@@ -393,6 +393,39 @@ def test_a_true_report_and_a_plain_answer_are_spoken_as_they_are():
     assert len(llm.specialist_requests) == 1
 
 
+def test_focus_moves_to_a_private_field_even_if_the_model_only_talks_about_it():
+    """Told to type a code with focus elsewhere, the user would type it into the wrong,
+    unprotected field."""
+    llm, deps = scripted(
+        [ToolCallRequest(ToolCall("c1", "type", {"ref": "e4", "text": "Pune"})), StreamEnd()],
+        [
+            TextDelta("I typed Pune. Please type your one-time code and say continue."),
+            StreamEnd(),
+        ],
+    )
+    page = FakePage()
+    with session(deps) as client:
+        result = client.ask("type Pune into the city field", page=page)
+    assert tool_calls(result) == [("type", "e4", {"text": "Pune"}), ("type", "e5", {"text": ""})]
+    assert result.speech == [
+        "One-time code is private, so I will not type it for you.",
+        "I have moved to it.",
+        "Type it on your keyboard, then say continue.",
+    ]
+
+
+def test_talk_about_a_private_field_that_is_already_typed_moves_nothing():
+    llm, deps = scripted(
+        [TextDelta("You have already typed the one-time code. Enter the city next."), StreamEnd()]
+    )
+    page = FakePage()
+    page.type_privately("One-time code")
+    with session(deps) as client:
+        result = client.ask("what is left to fill?", page=page)
+    assert result.of_type("tool_call") == []
+    assert result.speech[0] == "You have already typed the one-time code."
+
+
 def test_the_prompt_states_the_safety_rules():
     assert "unless a tool result in this turn says Done" in ROLE
     assert "Never ask the user to say the value" in ROLE

@@ -27,7 +27,7 @@ from app.agents.base import (
 from app.errors import TurnError
 from app.llm.base import LLMClient, LLMRequest, Message, TextDelta, ToolCall, ToolCallRequest
 from app.llm.page_data import wrap_page_data
-from app.protocol import PageSnapshot
+from app.protocol import PageSnapshot, SnapshotNode
 from app.tools.actions import ACTOR_TOOLS, ASK_USER, PAGE_ACTIONS
 
 log = logging.getLogger("assista.actor")
@@ -117,6 +117,9 @@ _CLAIM = re.compile(
     re.IGNORECASE,
 )
 
+_ASKS_TO_TYPE = re.compile(r"(type|enter|key in|fill in)")
+_PRIVATE_WORDS = re.compile(r"(sensitive|private|password|passcode|pin|code|card)")
+
 _VALUE_ROLES = ("textbox", "searchbox", "combobox", "listbox", "spinbutton", "slider")
 _TOTAL = re.compile(r"\btotal\b", re.IGNORECASE)
 _MAX_READ_BACK_LINES = 16
@@ -166,6 +169,17 @@ class Actor(Specialist):
                     messages.append(Message("assistant", said))
                     messages.append(Message("user", NOTHING_DONE))
                     continue
+                # The model sometimes tells the user to type a private field without
+                # moving focus there. Wherever focus is, the secret would be typed
+                # there, so the hand-over is done here before the user is told.
+                field = _private_field_named(said, snapshot) if tools else None
+                if field is not None:
+                    call = ToolCall("handover", "type", {"ref": field.ref, "text": ""})
+                    out.tool_calls.append({"name": call.name, "arguments": call.arguments})
+                    result = await self._act(ctx, snapshot.snapshot_id, call)
+                    if result.error == "sensitive_field":
+                        yield PRIVATE_FIELD.format(field=field.name or "This field")
+                        return
                 yield said
                 return
             # Words said alongside tool calls come before the results, so they cannot
@@ -271,6 +285,22 @@ def read_back(control: str, snapshot: PageSnapshot) -> str:
             "Shall I go ahead?",
         ]
     )
+
+
+def _private_field_named(said: str, snapshot: PageSnapshot) -> SnapshotNode | None:
+    """The empty sensitive field the model is asking the user to type into, if any."""
+    text = said.lower()
+    if not _ASKS_TO_TYPE.search(text):
+        return None
+    empty = [
+        node for node in snapshot.nodes if node.sensitive and not (node.state or {}).get("filled")
+    ]
+    named = [node for node in empty if node.name and node.name.lower() in text]
+    if named:
+        return named[0]
+    if len(empty) == 1 and _PRIVATE_WORDS.search(text):
+        return empty[0]
+    return None
 
 
 def _failure(error: str | None) -> str:
