@@ -23,6 +23,7 @@ import {
   watchPreferences,
   type Preferences,
 } from '../store/preferences';
+import { describeActions, entryFor, loadActions, logAction } from '../store/actionLog';
 import { watchKeySettings } from '../store/settings';
 import { Cues } from './cues';
 import { cancelSay, say } from './localVoice';
@@ -171,6 +172,13 @@ function runLocalCommand(command: LocalCommand): void {
     case 'verbosity':
       void savePreferences({ verbosity: command.level });
       answerLocally(VERBOSITY_CONFIRMATIONS[command.level]);
+      break;
+    case 'actions':
+      // Read from the device; the log never leaves it.
+      void loadActions().then(
+        (entries) => answerLocally(describeActions(entries)),
+        () => answerLocally('I could not read my action log.'),
+      );
       break;
     case 'spell': {
       const target = command.text ?? spellTarget(replies.text);
@@ -444,7 +452,15 @@ async function answerConfirmation(
   approved: boolean,
 ): Promise<void> {
   socket.send({ type: 'confirm', turn_id: turn, confirm_id: action.id, approved });
-  if (!approved) return;
+  if (!approved) {
+    void logAction({
+      at: Date.now(),
+      tool: action.tool.name,
+      target: action.control,
+      outcome: 'declined',
+    });
+    return;
+  }
   const tool: ToolRequest = { ...action.tool, confirmed: { control: action.control } };
   sendToolResult(turn, action.callId, tool, await runTool(tool));
 }
@@ -453,6 +469,7 @@ function sendToolResult(turn: string, callId: string, tool: ToolRequest, reply: 
   if (reply.ok && tool.name === 'click' && reply.result.target?.role === 'link') {
     void cues.play('link');
   }
+  void logAction(entryFor(tool, reply, Date.now(), Boolean(tool.confirmed)));
   // Private mode: focus is now on a field the user must type themselves.
   if (!reply.ok && reply.sensitive) void cues.play('private');
   if (turn !== activeTurn) return;

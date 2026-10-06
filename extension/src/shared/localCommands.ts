@@ -1,5 +1,5 @@
-// Local commands (F10): stop, repeat, slower, faster, spell it, and how much detail to
-// give. They are handled in the extension and never reach the model. A typed command is
+// Local commands (F10, F11): stop, repeat, slower, faster, spell it, how much detail to
+// give, and reading back the action log. They are handled in the extension and never reach the model. A typed command is
 // caught before it is sent; a spoken one is recognised by the backend, which ends the
 // turn after transcript_final without answering. backend/app/local_commands.py mirrors
 // the matching, and a backend test checks it against localCommands.json.
@@ -12,6 +12,7 @@ export type LocalCommand =
   | { kind: 'repeat' }
   | { kind: 'slower' }
   | { kind: 'faster' }
+  | { kind: 'actions' }
   | { kind: 'verbosity'; level: Verbosity }
   | { kind: 'spell'; text: string | null };
 
