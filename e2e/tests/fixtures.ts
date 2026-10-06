@@ -92,5 +92,4 @@ export async function recordedPanel(openPanel: () => Promise<Page>) {
   return { panel, sent, received, raw };
 }
 
-export const of = (frames: Frame[], type: string) =>
-  frames.filter((frame) => frame.type === type);
+export const of = (frames: Frame[], type: string) => frames.filter((frame) => frame.type === type);

@@ -1,4 +1,10 @@
-"""Advisor: money and risk. Tells the user what they will really pay (F08)."""
+"""Advisor: money and risk. Tells the user what they will really pay (F08) and warns of
+tricks that push them to pay more or decide in a hurry (F14).
+
+Boxes the page ticked in advance are found by code in the extension (rules.preticked), so
+the warning about them is written here in code too: the user hears it whatever the model
+says.
+"""
 
 from __future__ import annotations
 
@@ -12,6 +18,7 @@ from app.agents.base import (
     system_prompt,
 )
 from app.llm.base import LLMClient, LLMRequest, TextDelta
+from app.protocol import PageSnapshot
 
 # The mock model recognises the Advisor by "You are the Advisor."; keep
 # app/llm/mock_advisor.py in step.
@@ -31,7 +38,27 @@ not match, and use low confidence.
 miss. Point it out.
 - Do not count options that are not ticked or chosen. You may mention them as optional.
 - Give amounts and currency the way the page writes them. If the page shows no prices, \
-say so. Never guess an amount."""
+say so. Never guess an amount.
+
+Tricks, also called dark patterns. After answering, warn the user in one short sentence \
+each about any of these that the page data shows:
+- Fees that appear only late, in small print, or outside the order summary.
+- Pressure to hurry: countdowns (listed under rules.countdowns), "only 2 left", "14 \
+people are looking at this", offers that end soon. Say the page cannot prove these.
+- Wording that shames the user for saying no, such as a decline link that reads "No \
+thanks, I don't like saving money".
+- Extras added without asking, a free trial that turns into a paid plan, or a way to \
+decline or cancel that is hard to find.
+Boxes the page ticked in advance are listed under rules.preticked. Count them in the \
+total if they are ticked, but do not warn about them yourself: Assista tells the user \
+about them after your answer.
+Call something a trick only if the page data shows it. If the user asks whether the \
+page is trying to trick them and you find nothing, say so."""
+
+PRETICKED_ONE = "Watch out: the page ticked {box} for you. Untick it if you don't want it."
+PRETICKED_MANY = (
+    "Watch out: the page ticked {count} boxes for you: {boxes}. Untick any you don't want."
+)
 
 
 class Advisor(Specialist):
@@ -44,7 +71,7 @@ class Advisor(Specialist):
     def build_request(self, ctx: TurnContext) -> LLMRequest:
         return LLMRequest(
             system=system_prompt(ROLE, ctx.verbosity),
-            messages=page_messages(ctx),
+            messages=page_messages(ctx, rules_note(ctx.snapshot)),
             model=self.model,
         )
 
@@ -52,3 +79,28 @@ class Advisor(Specialist):
         async for event in self.llm.stream(self.build_request(ctx)):
             if isinstance(event, TextDelta):
                 yield event.text
+        if warning := preticked_warning(ctx.snapshot):
+            yield f"\n{warning}"
+
+
+def rules_note(snapshot: PageSnapshot) -> str:
+    """What the extension's rule checks found, in Assista's words, not the page's."""
+    preticked, countdowns = len(snapshot.rules.preticked), len(snapshot.rules.countdowns)
+    if not preticked and not countdowns:
+        return ""
+    return (
+        f"Assista's own checks found {preticked} box(es) ticked in advance and "
+        f"{countdowns} countdown(s). They are listed under rules in the page data, by ref."
+    )
+
+
+def preticked_warning(snapshot: PageSnapshot) -> str:
+    """Names every box the page ticked for the user, from the page as it is."""
+    names = {node.ref: node.name for node in snapshot.nodes}
+    boxes = [names.get(ref) or "a box with no label" for ref in snapshot.rules.preticked]
+    if not boxes:
+        return ""
+    if len(boxes) == 1:
+        return PRETICKED_ONE.format(box=boxes[0])
+    listed = ", ".join(boxes[:-1]) + f" and {boxes[-1]}"
+    return PRETICKED_MANY.format(count=len(boxes), boxes=listed)

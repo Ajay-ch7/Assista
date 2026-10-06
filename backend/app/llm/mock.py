@@ -43,7 +43,11 @@ _ROUTES = [
         r"\b(click|press|tap|type|enter|fill|select|choose|tick|untick|scroll|go back|"
         r"go to|open|switch|submit|add .+ to (the )?cart|place .*order|sign in|log in)\b",
     ),
-    ("advisor", r"\b(total|cost|fees?|charges?|pay|hidden|trick|terms|fine print)\b"),
+    (
+        "advisor",
+        r"\b(total|cost|fees?|charges?|pay|hidden|tricks?|catch|dark patterns?|terms|"
+        r"fine print)\b",
+    ),
 ]
 _FOLLOW_UP = re.compile(r"\b(it|its|it's|they|them|that one|this one|he|she|wearing)\b")
 
