@@ -15,7 +15,6 @@ from app.llm.base import (
     TextDelta,
     TextPart,
     ToolCall,
-    ToolCallOpaque,
     ToolSpec,
 )
 from app.llm.gateway import create_llm

@@ -1,8 +1,7 @@
 import { readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { CueName } from '../shared/protocol';
-import { CUE_NAMES, Cues, THINKING_EVERY_MS } from './cues';
+import { CUE_SOUNDS, Cues, THINKING_EVERY_MS, type CueSound } from './cues';
 
 function fakePlayer() {
   const played: { buffer: unknown; afterSpeech: boolean }[] = [];
@@ -13,7 +12,7 @@ function fakePlayer() {
   };
 }
 
-const load = vi.fn(async (name: CueName) => new TextEncoder().encode(name).buffer as ArrayBuffer);
+const load = vi.fn(async (name: CueSound) => new TextEncoder().encode(name).buffer as ArrayBuffer);
 
 afterEach(() => {
   vi.useRealTimers();
@@ -23,7 +22,7 @@ afterEach(() => {
 describe('Cues', () => {
   it('has a sound file for every cue', () => {
     const files = readdirSync(resolve(import.meta.dirname, '../../public/cues'));
-    expect(files.sort()).toEqual(CUE_NAMES.map((name) => `${name}.wav`).sort());
+    expect(files.sort()).toEqual(CUE_SOUNDS.map((name) => `${name}.wav`).sort());
   });
 
   it('loads each cue once and plays it now or after the speech', async () => {

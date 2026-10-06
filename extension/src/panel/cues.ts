@@ -1,6 +1,7 @@
 // Sound cues (F18): every state the user cannot see is heard instead. Listening rises,
 // thinking ticks while the answer is on its way, done falls after the reply, error drops
-// low, link and alert come from the backend.
+// low, link and alert come from the backend. Private is played by the panel alone, when
+// focus moves to a field the user must type themselves.
 
 import type { CueName } from '../shared/protocol';
 import type { Player } from './player';
@@ -13,10 +14,14 @@ export const CUE_NAMES: readonly CueName[] = [
   'done',
   'alert',
 ];
+/** The backend's cues, plus the ones only the panel plays. */
+export type CueSound = CueName | 'private';
+export const CUE_SOUNDS: readonly CueSound[] = [...CUE_NAMES, 'private'];
+
 /** How often the thinking cue repeats while the user waits. */
 export const THINKING_EVERY_MS = 2500;
 
-type Loader = (name: CueName) => Promise<ArrayBuffer>;
+type Loader = (name: CueSound) => Promise<ArrayBuffer>;
 
 const fetchCue: Loader = async (name) => {
   const response = await fetch(chrome.runtime.getURL(`cues/${name}.wav`));
@@ -25,7 +30,7 @@ const fetchCue: Loader = async (name) => {
 };
 
 export class Cues {
-  private readonly buffers = new Map<CueName, Promise<AudioBuffer>>();
+  private readonly buffers = new Map<CueSound, Promise<AudioBuffer>>();
   private thinkingTimer: ReturnType<typeof setInterval> | undefined;
 
   constructor(
@@ -34,7 +39,7 @@ export class Cues {
   ) {}
 
   /** Plays a cue now, or after the speech already queued. A cue that fails to load is skipped. */
-  async play(name: CueName, afterSpeech = false): Promise<void> {
+  async play(name: CueSound, afterSpeech = false): Promise<void> {
     try {
       this.player.playClip(await this.buffer(name), afterSpeech);
     } catch (error) {
@@ -58,7 +63,7 @@ export class Cues {
     return this.thinkingTimer !== undefined;
   }
 
-  private buffer(name: CueName): Promise<AudioBuffer> {
+  private buffer(name: CueSound): Promise<AudioBuffer> {
     let buffer = this.buffers.get(name);
     if (!buffer) {
       buffer = this.load(name).then((data) => this.player.decode(data));

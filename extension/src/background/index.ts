@@ -4,15 +4,17 @@
 import {
   isAddressedTo,
   type Ack,
+  type ActionReply,
   type CaptureReply,
   type ScreenshotReply,
   type SnapshotReply,
   type ToContent,
   type ToPanel,
   type ToWorker,
+  type ToolRequest,
 } from '../shared/messages';
 import { cropImage } from './screenshot';
-import { pickTargetTab } from './tabs';
+import { findTab, normalizeUrl, pickTargetTab } from './tabs';
 
 const EXTENSION_ORIGIN = chrome.runtime.getURL('');
 const CONTENT_SCRIPT = 'content.js';
@@ -59,7 +61,7 @@ async function toggleTalk(tab?: chrome.tabs.Tab): Promise<void> {
 async function handle(
   msg: ToWorker,
   sender: chrome.runtime.MessageSender,
-): Promise<Ack | SnapshotReply | ScreenshotReply> {
+): Promise<Ack | SnapshotReply | ScreenshotReply | ActionReply> {
   switch (msg.kind) {
     case 'talk_key':
       return sendToPanel({ to: 'panel', kind: 'talk_key', phase: msg.phase }, sender.tab);
@@ -69,6 +71,8 @@ async function handle(
       return snapshotOfTargetTab();
     case 'get_screenshot':
       return screenshotOfTargetTab(msg.ref);
+    case 'run_tool':
+      return runTool(msg.tool);
   }
 }
 
@@ -144,6 +148,70 @@ async function screenshotOfTargetTab(ref?: string): Promise<ScreenshotReply> {
     return { ok: false, error: `capture_failed: ${String(error)}` };
   } finally {
     await sendToContent<Ack>(tab.id, { to: 'content', kind: 'end_capture' });
+  }
+}
+
+/**
+ * Runs one action tool. Switching tabs and opening addresses happen here; everything else
+ * happens in the target tab's page. Returns once the page has settled, so the snapshot
+ * that follows shows the result.
+ */
+async function runTool(tool: ToolRequest): Promise<ActionReply> {
+  if (tool.name === 'switch_tab') return switchTab(tool.args);
+  if (tool.name === 'open_url') return openUrl(tool.args);
+
+  const tab = await targetTab();
+  if (tab?.id === undefined) return { ok: false, error: 'no_tab' };
+  const reply = await sendToContent<ActionReply>(tab.id, {
+    to: 'content',
+    kind: 'run_action',
+    tool,
+  });
+  if (!reply) return { ok: false, error: 'unreachable_page' };
+  if (reply.ok) await settle(tab.id);
+  return reply;
+}
+
+async function switchTab(args: Record<string, unknown>): Promise<ActionReply> {
+  const tabs = await chrome.tabs.query({});
+  const tab = findTab(tabs, args, EXTENSION_ORIGIN);
+  if (tab?.id === undefined) {
+    const titles = tabs
+      .filter((item) => !(item.url ?? '').startsWith(EXTENSION_ORIGIN))
+      .map((item) => item.title ?? 'untitled')
+      .slice(0, 12);
+    return { ok: false, error: `no_such_tab: ${titles.join(' | ')}` };
+  }
+  await chrome.tabs.update(tab.id, { active: true });
+  await chrome.windows.update(tab.windowId, { focused: true }).catch(() => undefined);
+  return {
+    ok: true,
+    result: { action: 'switch_tab', target: { role: 'tab', name: tab.title ?? 'untitled' } },
+  };
+}
+
+async function openUrl(args: Record<string, unknown>): Promise<ActionReply> {
+  const url = normalizeUrl(args.url);
+  if (!url) return { ok: false, error: 'blocked_url' };
+  const current = args.new_tab === true ? undefined : await targetTab();
+  const tab =
+    current?.id === undefined
+      ? await chrome.tabs.create({ url })
+      : await chrome.tabs.update(current.id, { url });
+  if (tab?.id !== undefined) await settle(tab.id);
+  return { ok: true, result: { action: 'open_url', detail: new URL(url).hostname } };
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Waits for the tab to finish what an action started: a page load, or a redraw. */
+async function settle(tabId: number): Promise<void> {
+  await sleep(350);
+  const deadline = Date.now() + 8000;
+  while (Date.now() < deadline) {
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    if (!tab || tab.status === 'complete') return;
+    await sleep(150);
   }
 }
 

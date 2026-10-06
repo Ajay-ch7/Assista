@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import uuid
 from collections.abc import AsyncIterator, Callable, Coroutine
 from dataclasses import dataclass
 from typing import Any
@@ -17,6 +18,9 @@ from fastapi import FastAPI, WebSocket
 from pydantic import BaseModel, ValidationError
 
 from app.agents.base import (
+    ActionResult,
+    ConfirmedAction,
+    HeldAction,
     PageAccess,
     Screenshot,
     ScreenshotUnavailable,
@@ -25,6 +29,7 @@ from app.agents.base import (
 )
 from app.agents.team import Team
 from app.config import ProviderNotConfigured, Settings
+from app.confirmation import parse_confirmation
 from app.errors import TurnError
 from app.llm.base import LLMClient
 from app.llm.gateway import create_llm
@@ -34,6 +39,7 @@ from app.protocol import (
     AudioFormat,
     AudioStart,
     Confirm,
+    ConfirmRequest,
     Done,
     Error,
     PageSnapshot,
@@ -43,6 +49,7 @@ from app.protocol import (
     SettingsUpdate,
     SnapshotReply,
     SpeakText,
+    ToolCall,
     ToolResult,
     Transcript,
     TranscriptFinal,
@@ -99,6 +106,8 @@ class Deps:
     tts: TextToSpeech | None = None
     snapshot_timeout: float = 10.0
     screenshot_timeout: float = 10.0
+    action_timeout: float = 20.0
+    confirm_timeout: float = 10.0
 
     def __post_init__(self) -> None:
         if self.respond is None:
@@ -128,6 +137,8 @@ class Session:
         self._audio_turn: str | None = None
         # Replies the running turn is waiting for, keyed by (turn_id, message type).
         self._pending: dict[tuple[str, str], asyncio.Future[Any]] = {}
+        # Replies that arrived before the turn started waiting for them.
+        self._early: dict[tuple[str, str], Any] = {}
 
     async def run(self) -> None:
         try:
@@ -182,7 +193,9 @@ class Session:
 
     def _resolve(self, turn_id: str, kind: str, msg: Any) -> None:
         future = self._pending.get((turn_id, kind))
-        if future is not None and not future.done():
+        if future is None:
+            self._early[(turn_id, kind)] = msg
+        elif not future.done():
             future.set_result(msg)
 
     # Turns
@@ -196,6 +209,7 @@ class Session:
             self._turn.cancel()
         self._turn = None
         self._audio = None
+        self._early.clear()
 
     async def _guard(self, turn_id: str, work: Coroutine[Any, Any, None]) -> None:
         """Runs a turn and makes sure every failure reaches the user as a sentence."""
@@ -242,11 +256,31 @@ class Session:
             await speech.close()
 
     async def _answer(self, turn_id: str, text: str, tts: SpeechStream | None = None) -> None:
-        await self._send(TranscriptFinal(turn_id=turn_id, text=text))
         if is_local_command(text):
-            # Stop, repeat, speed and the like are carried out by the extension.
+            # Stop, repeat, speed and the like are carried out by the extension. A held
+            # action stays held, so the user can ask to hear the read-back again.
+            await self._send(TranscriptFinal(turn_id=turn_id, text=text))
             await self._send(Done(turn_id=turn_id))
             return
+
+        # Any other words settle a held action: yes or no answers it, a new request
+        # drops it. The extension applies the same rule to the action itself.
+        held, self.memory.held = self.memory.held, None
+        lead = ""
+        confirmed: ConfirmedAction | None = None
+        if held is not None:
+            answer = parse_confirmation(text)
+            if answer is None:
+                await self._send(TranscriptFinal(turn_id=turn_id, text=text))
+                lead = f"I have not pressed {held.control}.\n"
+            else:
+                confirmed = await self._settle(turn_id, text, held)
+                if confirmed is None:
+                    await self._say(turn_id, [f"Okay. I have not pressed {held.control}."], tts)
+                    return
+        else:
+            await self._send(TranscriptFinal(turn_id=turn_id, text=text))
+
         snapshot = await self._request_snapshot(turn_id)
         ctx = TurnContext(
             text=text,
@@ -255,11 +289,56 @@ class Session:
             private_mode=self.private_mode,
             memory=self.memory,
             page=_SessionPage(self, turn_id),
+            confirmed=confirmed,
         )
+
+        async def pieces() -> AsyncIterator[str]:
+            if lead:
+                yield lead
+            async for piece in self.deps.respond(ctx):
+                yield piece
+
+        await self._say(turn_id, pieces(), tts)
+
+    async def _settle(self, turn_id: str, text: str, held: HeldAction) -> ConfirmedAction | None:
+        """Waits for the extension's verdict on the user's yes or no. Returns how the
+        action went when it was run, or None when it was not."""
+        try:
+            confirm: Confirm = await self._request(
+                turn_id,
+                "confirm",
+                TranscriptFinal(turn_id=turn_id, text=text),
+                self.deps.confirm_timeout,
+            )
+        except TimeoutError:
+            raise TurnError(
+                "confirm_lost", "I lost track of what I was about to do. Please ask me again."
+            ) from None
+        # The extension has the last word: it runs the action only on its own yes.
+        if not confirm.approved or confirm.confirm_id != held.confirm_id:
+            return None
+        try:
+            result: ToolResult = await self._wait(turn_id, "tool_result", self.deps.action_timeout)
+        except TimeoutError:
+            return ConfirmedAction(control=held.control, ok=False, error="timeout")
+        return ConfirmedAction(control=held.control, ok=result.ok, error=result.error)
+
+    async def _say(
+        self, turn_id: str, pieces: AsyncIterator[str] | list[str], tts: SpeechStream | None
+    ) -> None:
+        """Speaks streamed text sentence by sentence, then ends the turn."""
+
+        async def stream() -> AsyncIterator[str]:
+            if isinstance(pieces, list):
+                for piece in pieces:
+                    yield piece
+            else:
+                async for piece in pieces:
+                    yield piece
 
         splitter = SentenceSplitter()
         seq = 0
-        async for piece in self.deps.respond(ctx):
+        async for piece in stream():
             for sentence in splitter.feed(piece):
                 await self._speak(turn_id, seq, sentence, tts)
                 seq += 1
@@ -287,11 +366,24 @@ class Session:
 
     async def _request(self, turn_id: str, kind: str, request: BaseModel, wait: float) -> Any:
         """Sends `request` and waits for the extension's reply of type `kind`."""
+        self._early.pop((turn_id, kind), None)
         future: asyncio.Future[Any] = asyncio.get_running_loop().create_future()
         key = (turn_id, kind)
         self._pending[key] = future
         try:
             await self._send(request)
+            return await asyncio.wait_for(future, wait)
+        finally:
+            self._pending.pop(key, None)
+
+    async def _wait(self, turn_id: str, kind: str, wait: float) -> Any:
+        """Waits for a message of type `kind` that the extension sends unasked."""
+        key = (turn_id, kind)
+        if key in self._early:
+            return self._early.pop(key)
+        future: asyncio.Future[Any] = asyncio.get_running_loop().create_future()
+        self._pending[key] = future
+        try:
             return await asyncio.wait_for(future, wait)
         finally:
             self._pending.pop(key, None)
@@ -326,6 +418,36 @@ class Session:
             raise ScreenshotUnavailable(code, _SCREENSHOT_ERRORS.get(code, _SCREENSHOT_FAILED))
         return Screenshot(data=reply.image, mime=reply.mime or "image/png")
 
+    async def act(
+        self, turn_id: str, name: str, snapshot_id: str, ref: str | None, args: dict[str, Any]
+    ) -> ActionResult:
+        call = ToolCall(
+            turn_id=turn_id,
+            call_id=uuid.uuid4().hex[:8],
+            name=name,
+            snapshot_id=snapshot_id,
+            ref=ref,
+            args=args,
+        )
+        try:
+            reply: ToolResult = await self._request(
+                turn_id, "tool_result", call, self.deps.action_timeout
+            )
+        except TimeoutError:
+            return ActionResult(ok=False, error="timeout")
+        if reply.call_id != call.call_id:
+            return ActionResult(ok=False, error="timeout")
+        return ActionResult(
+            ok=reply.ok,
+            held=bool(reply.held_by_gate),
+            result=reply.result if isinstance(reply.result, dict) else {},
+            error=reply.error,
+        )
+
+    async def ask_to_confirm(self, turn_id: str, held: HeldAction, text: str) -> None:
+        self.memory.held = held
+        await self._send(ConfirmRequest(turn_id=turn_id, confirm_id=held.confirm_id, text=text))
+
     # Outgoing messages
 
     async def _send(self, msg: BaseModel) -> None:
@@ -347,6 +469,17 @@ class _SessionPage(PageAccess):
 
     async def screenshot(self, ref: str | None = None) -> Screenshot:
         return await self._session.request_screenshot(self._turn_id, ref)
+
+    async def snapshot(self) -> PageSnapshot:
+        return await self._session._request_snapshot(self._turn_id)
+
+    async def act(
+        self, name: str, snapshot_id: str, ref: str | None, args: dict[str, Any]
+    ) -> ActionResult:
+        return await self._session.act(self._turn_id, name, snapshot_id, ref, args)
+
+    async def ask_to_confirm(self, held: HeldAction, text: str) -> None:
+        await self._session.ask_to_confirm(self._turn_id, held, text)
 
 
 def _origin_allowed(origin: str | None) -> bool:

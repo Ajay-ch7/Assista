@@ -3,7 +3,9 @@ with no browser, microphone or speaker."""
 
 from __future__ import annotations
 
+import copy
 import json
+import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -12,6 +14,8 @@ from typing import Any
 from fastapi.testclient import TestClient
 
 from app.config import Settings
+from app.confirmation import parse_confirmation
+from app.local_commands import is_local_command
 from app.main import Deps, create_app
 
 SHOP_SNAPSHOT: dict[str, Any] = {
@@ -51,6 +55,135 @@ NO_REPLY = object()
 
 SCREENSHOT: dict[str, Any] = {"image": "/9j/ZmFrZSBqcGVn", "mime": "image/jpeg"}
 """A stand-in screenshot reply. Pass {"image": None, "error": "..."} for a failed capture."""
+
+
+FORM_SNAPSHOT: dict[str, Any] = {
+    "url": "http://127.0.0.1:8787/form.html",
+    "title": "Delivery details - Riverside Outfitters",
+    "snapshot_id": "form-0",
+    "nodes": [
+        {"ref": "e1", "role": "heading", "name": "Delivery details", "state": {"level": 1}},
+        {"ref": "e2", "role": "paragraph", "text": "Order total: 4,598 rupees"},
+        {"ref": "e3", "role": "textbox", "name": "Full name", "value": ""},
+        {"ref": "e4", "role": "textbox", "name": "City", "value": ""},
+        {
+            "ref": "e5",
+            "role": "textbox",
+            "name": "One-time code",
+            "sensitive": True,
+            "value": None,
+            "state": {"filled": False},
+        },
+        {"ref": "e6", "role": "link", "name": "Returns policy"},
+        {"ref": "e7", "role": "button", "name": "Add gift wrap"},
+        {"ref": "e8", "role": "button", "name": "Place order"},
+    ],
+}
+
+_GATED = re.compile(r"\b(pay|buy|place order|submit|confirm|delete|send)\b", re.IGNORECASE)
+
+
+class FakePage:
+    """Plays the extension's part for action tools: a page whose fields can be typed
+    into, with the confirmation gate and private fields behaving as the extension's do.
+
+    Every snapshot gets a new id, as in the extension, so stale refs are refused.
+    """
+
+    def __init__(self, snapshot: dict[str, Any] = FORM_SNAPSHOT) -> None:
+        self._snapshot = copy.deepcopy(snapshot)
+        self._version = 0
+        self.calls: list[dict[str, Any]] = []
+        self.pressed: list[str] = []
+        self.held: dict[str, Any] | None = None
+        self.asked = False
+        self.after_submit: dict[str, Any] | None = None
+        """The page shown once a gated control has been pressed."""
+
+    def snapshot(self) -> dict[str, Any]:
+        self._version += 1
+        return {**self._snapshot, "snapshot_id": f"page-{self._version}"}
+
+    def type_privately(self, name: str) -> None:
+        """The user types into a sensitive field themselves."""
+        node = next(n for n in self._snapshot["nodes"] if n.get("name") == name)
+        node["state"] = {**node.get("state", {}), "filled": True}
+
+    def run(self, call: dict[str, Any]) -> dict[str, Any]:
+        """Runs one tool_call and returns the fields of its tool_result."""
+        self.calls.append(call)
+        self.held, self.asked = None, False
+        name, args = call["name"], call.get("args", {})
+        if name in ("go_back", "switch_tab", "open_url") or (
+            name == "scroll" and "ref" not in call
+        ):
+            detail = args.get("direction") or args.get("url") or args.get("query")
+            return {
+                "ok": True,
+                "result": {"action": name, **({"detail": detail} if detail else {})},
+            }
+        if call["snapshot_id"] != f"page-{self._version}":
+            return {"ok": False, "error": "stale_ref"}
+        node = next((n for n in self._snapshot["nodes"] if n["ref"] == call.get("ref")), None)
+        if node is None:
+            return {"ok": False, "error": "stale_ref"}
+        target = {"role": node["role"], "name": node.get("name", "")}
+        if node.get("sensitive"):
+            return {"ok": False, "error": "sensitive_field", "result": {"field": target["name"]}}
+        if name == "type":
+            node["value"] = args.get("text", "")
+            return {
+                "ok": True,
+                "result": {"action": name, "target": target, "detail": node["value"]},
+            }
+        if name == "click" and _GATED.search(target["name"]):
+            self.held = {
+                "confirm_id": f"hold-{len(self.calls)}",
+                "call": call,
+                "control": target["name"],
+            }
+            return {
+                "ok": False,
+                "held_by_gate": True,
+                "error": "held_by_gate",
+                "result": {
+                    "confirm_id": self.held["confirm_id"],
+                    "control": target["name"],
+                    "reason": "risky_control",
+                },
+            }
+        if name == "click":
+            self.pressed.append(target["name"])
+        return {"ok": True, "result": {"action": name, "target": target}}
+
+    def settle(self, turn_id: str, text: str) -> list[dict[str, Any]]:
+        """What the panel sends when the user speaks while an action is held."""
+        if is_local_command(text):
+            return []
+        held, asked = self.held, self.asked
+        self.held, self.asked = None, False
+        answer = parse_confirmation(text)
+        if held is None or not asked or answer is None:
+            return []
+        confirm = {
+            "type": "confirm",
+            "turn_id": turn_id,
+            "confirm_id": held["confirm_id"],
+            "approved": answer,
+        }
+        if not answer:
+            return [confirm]
+        self.pressed.append(held["control"])
+        if self.after_submit is not None:
+            self._snapshot = copy.deepcopy(self.after_submit)
+        result = {
+            "type": "tool_result",
+            "turn_id": turn_id,
+            "call_id": held["call"]["call_id"],
+            "ok": True,
+            "result": {"action": "click", "target": {"role": "button", "name": held["control"]}},
+        }
+        return [confirm, result]
 
 
 @dataclass
@@ -93,11 +226,12 @@ class TextModeClient:
         snapshot: Any = SHOP_SNAPSHOT,
         error: str | None = None,
         screenshot: Any = SCREENSHOT,
+        page: FakePage | None = None,
     ) -> TurnResult:
         """Sends one text-mode turn and plays the extension's part until it ends."""
         turn_id = self.next_turn_id()
         self.send({"type": "transcript", "turn_id": turn_id, "text": text})
-        return self.finish(turn_id, snapshot, error, screenshot)
+        return self.finish(turn_id, snapshot, error, screenshot, page)
 
     def say(
         self, *chunks: bytes, snapshot: Any = SHOP_SNAPSHOT, sample_rate: int = 16000
@@ -117,9 +251,10 @@ class TextModeClient:
         snapshot: Any = SHOP_SNAPSHOT,
         error: str | None = None,
         screenshot: Any = SCREENSHOT,
+        page: FakePage | None = None,
     ) -> TurnResult:
         """Collects the turn's messages, answering the backend's requests for the page,
-        until done or error."""
+        until done or error. With `page`, snapshots and action tools go to it."""
         result = TurnResult()
         while True:
             frame = self.ws.receive()
@@ -128,7 +263,20 @@ class TextModeClient:
                 continue
             msg = json.loads(frame["text"])
             result.messages.append(msg)
+            if page is not None:
+                if msg["type"] == "transcript_final":
+                    for reply in page.settle(msg["turn_id"], msg["text"]):
+                        self.send(reply)
+                elif msg["type"] == "tool_call":
+                    ids = {"turn_id": msg["turn_id"], "call_id": msg["call_id"]}
+                    self.send({"type": "tool_result", **ids, **page.run(msg)})
+                elif msg["type"] == "confirm_request":
+                    page.asked = page.held is not None and (
+                        msg["confirm_id"] == page.held["confirm_id"]
+                    )
             if msg["type"] == "request_snapshot" and snapshot is not NO_REPLY:
+                if page is not None:
+                    snapshot = page.snapshot()
                 reply = {"type": "snapshot", "turn_id": msg["turn_id"], "snapshot": snapshot}
                 if error:
                     reply["error"] = error

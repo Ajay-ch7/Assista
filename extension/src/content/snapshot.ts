@@ -200,6 +200,13 @@ export function resolveLatestRef(ref: string): Element {
   return resolveRef(current.id, ref);
 }
 
+/** The role and name the snapshot gives `el`. */
+export function describeElement(el: Element): { role: string; name: string } {
+  // Naming only needs the cache of which elements are hidden.
+  const build = { hiddenCache: new WeakMap<Element, boolean>() } as Build;
+  return { role: roleOf(el) ?? 'element', name: clip(accessibleName(el, build), MAX_NAME) };
+}
+
 export function buildSnapshot(doc: Document = document): PageSnapshot {
   const build: Build = {
     nodes: [],
@@ -425,6 +432,7 @@ function addControl(el: Element, role: string, build: Build): void {
     if (isSensitiveField(el, name)) {
       node.sensitive = true;
       node.value = null;
+      node.state = { ...node.state, filled: fieldValue(el, build) !== '' };
     } else {
       node.value = clip(fieldValue(el, build), MAX_VALUE);
     }

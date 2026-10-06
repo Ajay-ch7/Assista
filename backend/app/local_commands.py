@@ -1,4 +1,5 @@
-"""Local commands: stop, repeat, slower, faster, spell it, and how much detail to give.
+"""Local commands: stop, repeat, slower, faster, spell it, how much detail to give, and
+reading back the action log.
 
 The extension carries them out. When one arrives as speech, the backend sends
 transcript_final, so the extension hears it, and ends the turn without answering.
@@ -69,6 +70,16 @@ PHRASES: dict[str, tuple[str, ...]] = {
         "longer answers",
     ),
     "spell": ("spell it", "spell that", "spell that again", "spell it out", "spell"),
+    "actions": (
+        "what did you do",
+        "what did you just do",
+        "what have you done",
+        "what have you done so far",
+        "what did you do so far",
+        "what actions did you take",
+        "read the action log",
+        "action log",
+    ),
 }
 _ALL = {phrase for phrases in PHRASES.values() for phrase in phrases}
 

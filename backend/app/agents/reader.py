@@ -37,8 +37,9 @@ Never guess or use outside knowledge to fill the gap. A clear "the page doesn't 
 a high-confidence answer.
 - Read a table as sentences, for example "Volume is 30 litres".
 
-You can read pages but cannot click, type or navigate yet. If the user asks for an \
-action, say that you can only read for now."""
+You only read. If the user wants something done on the page, such as pressing a \
+button or filling a field, tell them to ask for it directly, for example "press Add to \
+cart"."""
 
 
 class Reader(Specialist):

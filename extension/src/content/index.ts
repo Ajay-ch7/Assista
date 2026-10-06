@@ -1,7 +1,8 @@
-// Content script: runs in every tab. Answers the service worker's requests about the page
-// and watches for the talk and stop keys.
+// Content script: runs in every tab. Answers the service worker's requests about the page,
+// acts on it, and watches for the talk and stop keys.
 
 import { isAddressedTo, type CaptureReply, type SnapshotReply } from '../shared/messages';
+import { runAction } from './actions';
 import { endCapture, prepareCapture } from './capture';
 import { installKeyListener } from './keys';
 import { StaleRefError, buildSnapshot } from './snapshot';
@@ -45,6 +46,9 @@ if (!window.__assistaContentLoaded) {
       case 'end_capture':
         endCapture();
         sendResponse({ ok: true });
+        return false;
+      case 'run_action':
+        sendResponse(runAction(msg.tool));
         return false;
     }
   });

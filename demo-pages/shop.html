@@ -63,7 +63,7 @@
         <a href="#tents">Tents</a>
         <a href="#backpacks">Backpacks</a>
         <a href="#boots">Boots</a>
-        <a href="#cart">Cart (0)</a>
+        <a href="#cart" id="cart-link">Cart (0)</a>
       </nav>
       <form role="search" action="#search">
         <label for="search">Search products</label>
@@ -143,5 +143,13 @@
     <footer>
       <p>Riverside Outfitters, 12 Lake Road, Bengaluru.</p>
     </footer>
+    <script>
+      // Adding to the cart only updates the count in the menu; the demo needs no server.
+      let inCart = 0;
+      document.getElementById('add-to-cart').addEventListener('click', () => {
+        inCart += 1;
+        document.getElementById('cart-link').textContent = `Cart (${inCart})`;
+      });
+    </script>
   </body>
 </html>

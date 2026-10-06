@@ -50,5 +50,15 @@
     "more details",
     "longer answers"
   ],
-  "spell": ["spell it", "spell that", "spell that again", "spell it out", "spell"]
+  "spell": ["spell it", "spell that", "spell that again", "spell it out", "spell"],
+  "actions": [
+    "what did you do",
+    "what did you just do",
+    "what have you done",
+    "what have you done so far",
+    "what did you do so far",
+    "what actions did you take",
+    "read the action log",
+    "action log"
+  ]
 }
