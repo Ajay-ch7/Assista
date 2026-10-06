@@ -17,6 +17,7 @@ import {
 import { fetchDocument, isLocalFile, isPdfUrl, pdfSnapshot, servesPdf } from './documents';
 import { cropImage } from './screenshot';
 import { findTab, normalizeUrl, pickTargetTab } from './tabs';
+import { WATCH_ALARM, WATCH_TOOLS, createWatchEngine } from './watches';
 
 const EXTENSION_ORIGIN = chrome.runtime.getURL('');
 const CONTENT_SCRIPT = 'content.js';
@@ -27,6 +28,12 @@ chrome.sidePanel
 
 chrome.runtime.onInstalled.addListener(() => {
   void injectIntoOpenTabs();
+  void watches.ensureAlarm();
+});
+chrome.runtime.onStartup.addListener(() => void watches.ensureAlarm());
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === WATCH_ALARM) void watches.onAlarm();
 });
 
 chrome.runtime.onMessage.addListener((msg: unknown, sender, sendResponse) => {
@@ -77,6 +84,9 @@ async function handle(
       return documentOfTargetTab();
     case 'run_tool':
       return runTool(msg.tool);
+    case 'watch_value':
+      await watches.onValue(msg.id, msg.value);
+      return { ok: true };
   }
 }
 
@@ -118,6 +128,8 @@ async function sendToContent<R>(tabId: number, msg: ToContent): Promise<R | null
     return null;
   }
 }
+
+const watches = createWatchEngine({ targetTab, sendToContent, sendToPanel });
 
 async function snapshotOfTargetTab(): Promise<SnapshotReply> {
   const tab = await targetTab();
@@ -180,8 +192,10 @@ async function screenshotOfTargetTab(ref?: string): Promise<ScreenshotReply> {
  * that follows shows the result.
  */
 async function runTool(tool: ToolRequest): Promise<ActionReply> {
+  if (WATCH_TOOLS.has(tool.name)) return watches.runTool(tool);
   if (tool.name === 'switch_tab') return switchTab(tool.args);
   if (tool.name === 'open_url') return openUrl(tool.args);
+  if (tool.name === 'web_search') return webSearch(tool.args);
 
   const tab = await targetTab();
   if (tab?.id === undefined) return { ok: false, error: 'no_tab' };
@@ -223,6 +237,15 @@ async function openUrl(args: Record<string, unknown>): Promise<ActionReply> {
       : await chrome.tabs.update(current.id, { url });
   if (tab?.id !== undefined) await settle(tab.id);
   return { ok: true, result: { action: 'open_url', detail: new URL(url).hostname } };
+}
+
+/** Opens a search engine's results for the user's words. */
+async function webSearch(args: Record<string, unknown>): Promise<ActionReply> {
+  const query = typeof args.query === 'string' ? args.query.trim() : '';
+  if (!query) return { ok: false, error: 'missing_text' };
+  const url = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+  const reply = await openUrl({ url, new_tab: args.new_tab });
+  return reply.ok ? { ok: true, result: { action: 'web_search', detail: query } } : reply;
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

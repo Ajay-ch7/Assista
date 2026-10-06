@@ -26,7 +26,7 @@ import {
 } from '../store/preferences';
 import { describeActions, entryFor, loadActions, logAction } from '../store/actionLog';
 import { watchKeySettings } from '../store/settings';
-import { Cues } from './cues';
+import { Cues, type CueSound } from './cues';
 import { cancelSay, say } from './localVoice';
 import { readLocalPdf } from './localFile';
 import { Mic } from './mic';
@@ -123,6 +123,13 @@ function fail(text: string): void {
   log('error', text);
   setStatus(text, 'error');
   say(text);
+}
+
+/** Tells the user something no turn asked for: a watch firing, a session about to end. */
+function announce(text: string, cue?: CueSound): void {
+  if (cue) void cues.play(cue);
+  log('assistant', text);
+  say(text, preferences.speed);
 }
 
 function beginTurn(): string {
@@ -548,6 +555,9 @@ chrome.runtime.onMessage.addListener((msg: unknown, _sender, sendResponse) => {
       break;
     case 'stop_key':
       stopSpeech();
+      break;
+    case 'announce':
+      announce(msg.text, msg.cue);
       break;
   }
   const ack: Ack = { ok: true };

@@ -99,6 +99,16 @@ function sentence(entry: ActionEntry): string {
       return `I switched to the tab ${target}.`;
     case 'open_url':
       return `I opened ${entry.detail ?? 'a page'}.`;
+    case 'focus':
+      return `I moved to ${target}.`;
+    case 'web_search':
+      return `I searched the web for ${entry.detail ?? 'something'}.`;
+    case 'set_watch':
+      return `I started watching ${target}.`;
+    case 'cancel_watch':
+      return `I stopped watching ${entry.detail ?? 'a page'}.`;
+    case 'list_watches':
+      return 'I listed what I am watching.';
     default:
       return `I did ${entry.tool}.`;
   }

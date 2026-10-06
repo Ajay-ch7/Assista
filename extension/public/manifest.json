@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "A voice web agent: browse by speaking, with every response as audio.",
   "minimum_chrome_version": "120",
-  "permissions": ["sidePanel", "tabs", "scripting", "storage"],
+  "permissions": ["sidePanel", "tabs", "scripting", "storage", "alarms", "notifications"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js",
@@ -18,11 +18,15 @@
   },
   "commands": {
     "toggle-talk": {
-      "suggested_key": { "default": "Alt+Shift+A" },
+      "suggested_key": {
+        "default": "Alt+Shift+A"
+      },
       "description": "Start or stop listening"
     },
     "stop-speech": {
-      "suggested_key": { "default": "Alt+Shift+S" },
+      "suggested_key": {
+        "default": "Alt+Shift+S"
+      },
       "description": "Stop speech"
     }
   },
@@ -32,5 +36,8 @@
       "js": ["content.js"],
       "run_at": "document_idle"
     }
-  ]
+  ],
+  "icons": {
+    "128": "icon.png"
+  }
 }
