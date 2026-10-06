@@ -188,6 +188,8 @@ class FakePage:
         self.asked = False
         self.after_submit: dict[str, Any] | None = None
         """The page shown once a gated control has been pressed."""
+        self.unasked: set[str] = set()
+        """Controls the extension would hold because the user did not name them."""
         self.saved: dict[str, str] = {}
         """Details saved on the device, by field name. Their fields are marked saved."""
         self.watches: list[dict[str, Any]] = []
@@ -268,6 +270,22 @@ class FakePage:
             return {
                 "ok": True,
                 "result": {"action": name, "target": target, "detail": node["value"]},
+            }
+        if name == "click" and target["name"] in self.unasked:
+            self.held = {
+                "confirm_id": f"hold-{len(self.calls)}",
+                "call": call,
+                "control": target["name"],
+            }
+            return {
+                "ok": False,
+                "held_by_gate": True,
+                "error": "held_by_gate",
+                "result": {
+                    "confirm_id": self.held["confirm_id"],
+                    "control": target["name"],
+                    "reason": "not_requested",
+                },
             }
         if name == "click" and _GATED.search(target["name"]):
             self.held = {

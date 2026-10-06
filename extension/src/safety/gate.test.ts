@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import { gateCheck } from './gate';
+import { gateCheck, wasRequested } from './gate';
 
 function control(html: string, selector = 'button, a, input'): Element {
   document.body.innerHTML = html;
@@ -83,5 +83,60 @@ describe('gateCheck', () => {
 
   it('names an unnamed control for the read-back', () => {
     expect(gateCheck(control('<form><button></button></form>'), '')?.control).toBe('this control');
+  });
+});
+
+describe('wasRequested', () => {
+  it.each([
+    ['Add to cart', 'add it to the cart and go to checkout'],
+    ['Checkout', 'add it to the cart and go to checkout'],
+    ['Returns policy', 'open the returns policy'],
+    ['Subscribe', 'I want a subscription'],
+    ['Book a table', 'book it'],
+    ['Gift wrap', 'Tick the gift wrap box, please'],
+    ['Next', 'next'],
+    ['Open menu', 'open the menu'],
+    ['Search', 'search for tents'],
+  ])('"%s" was asked for by "%s"', (name, said) => {
+    expect(wasRequested(name, [said])).toBe(true);
+  });
+
+  it.each([
+    ['Subscribe', 'scroll down'],
+    ['Buy a gift card', 'what is this page?'],
+    ['Continue', 'press the button'],
+    ['Contact us', 'continue'],
+    ['Open menu', 'open the returns policy page'],
+    ['', 'press it'],
+    ['Delete', ''],
+  ])('"%s" was not asked for by "%s"', (name, said) => {
+    expect(wasRequested(name, [said])).toBe(false);
+  });
+
+  it('looks at each of the recent requests', () => {
+    expect(wasRequested('Add gift wrap', ['fill in the form', 'yes', 'and gift wrap too'])).toBe(
+      true,
+    );
+    expect(wasRequested('Add gift wrap', [])).toBe(false);
+  });
+});
+
+describe('gateCheck: actions nobody asked for', () => {
+  const subscribe = () => control('<button type="button">Subscribe</button>');
+
+  it('holds a control the user did not name', () => {
+    expect(gateCheck(subscribe(), 'Subscribe', ['scroll down'])).toEqual({
+      control: 'Subscribe',
+      reason: 'not_requested',
+    });
+  });
+
+  it('lets a control the user named through', () => {
+    expect(gateCheck(subscribe(), 'Subscribe', ['press subscribe'])).toBeNull();
+  });
+
+  it('still holds a risky control the user did name', () => {
+    const buy = control('<button type="button">Buy a gift card</button>');
+    expect(gateCheck(buy, 'Buy a gift card', ['buy a gift card'])?.reason).toBe('risky_control');
   });
 });

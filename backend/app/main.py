@@ -295,11 +295,11 @@ class Session:
             answer = parse_confirmation(text)
             if answer is None:
                 await self._send(TranscriptFinal(turn_id=turn_id, text=text))
-                lead = f"I have not pressed {held.control}.\n"
+                lead = f"I have not {held.done} {held.control}.\n"
             else:
                 confirmed = await self._settle(turn_id, text, held)
                 if confirmed is None:
-                    await self._say(turn_id, [f"Okay. I have not pressed {held.control}."], tts)
+                    await self._say(turn_id, [f"Okay. I have not {held.done} {held.control}."], tts)
                     return
         else:
             await self._send(TranscriptFinal(turn_id=turn_id, text=text))
@@ -352,8 +352,10 @@ class Session:
         try:
             result: ToolResult = await self._wait(turn_id, "tool_result", self.deps.action_timeout)
         except TimeoutError:
-            return ConfirmedAction(control=held.control, ok=False, error="timeout")
-        return ConfirmedAction(control=held.control, ok=result.ok, error=result.error)
+            return ConfirmedAction(control=held.control, ok=False, error="timeout", done=held.done)
+        return ConfirmedAction(
+            control=held.control, ok=result.ok, error=result.error, done=held.done
+        )
 
     async def _say(
         self, turn_id: str, pieces: AsyncIterator[str] | list[str], tts: SpeechStream | None

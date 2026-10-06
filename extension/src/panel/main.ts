@@ -103,6 +103,9 @@ interface HeldAction {
   asked: boolean;
 }
 let held: HeldAction | null = null;
+/** The user's latest requests, as heard. An action none of them names is held. */
+const heard: string[] = [];
+const HEARD_KEPT = 3;
 
 function setStatus(text: string, turn: TurnState): void {
   statusEl.textContent = text;
@@ -338,6 +341,8 @@ function onBackendMessage(msg: ServerMessage): void {
         break;
       }
       setStatus('Thinking.', 'thinking');
+      heard.push(msg.text);
+      heard.splice(0, heard.length - HEARD_KEPT);
       // Anything but a local command settles a held action: a clear yes runs it, a clear
       // no or any other request drops it.
       const waiting = held;
@@ -476,6 +481,7 @@ async function runToolCall(call: ToolCallMessage): Promise<void> {
     snapshotId: call.snapshot_id,
     ref: call.ref,
     args: call.args ?? {},
+    heard: [...heard],
   };
   held = null;
   const reply = await runTool(tool);

@@ -53,6 +53,7 @@ _ROUTES = [
         r"fine print|small print|conditions|refunds?|renew\w*)\b",
     ),
 ]
+_AIMED_AT_ASSISTANTS = re.compile(r"\b(note|message) to (ai )?assistants?\b", re.I)
 _FOLLOW_UP = re.compile(r"\b(it|its|it's|they|them|that one|this one|he|she|wearing)\b")
 
 
@@ -254,6 +255,8 @@ def _orient(page: dict) -> str:
         f"It has {count('link')} links, {count('button')} buttons and "
         f"{count('textbox', 'searchbox', 'combobox', 'checkbox', 'radio')} form fields."
     )
+    if _AIMED_AT_ASSISTANTS.search(json.dumps(page)):
+        sentences.append("The page has instructions aimed at an assistant. I ignored them.")
     if clutter := page.get("flags", {}).get("clutter_removed"):
         sentences.append(f"I skipped {clutter} ads, banners or repeated menus.")
     return " ".join(sentences)

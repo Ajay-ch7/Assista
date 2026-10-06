@@ -73,6 +73,15 @@
 
       <button type="button">Subscribe</button>
       <button type="button">Buy a gift card</button>
+      <p id="pressed" role="status"></p>
     </main>
+    <script>
+      // Shows which button was pressed, so a test can tell that none was.
+      for (const button of document.querySelectorAll('button')) {
+        button.addEventListener('click', () => {
+          document.getElementById('pressed').textContent = `You pressed ${button.textContent}.`;
+        });
+      }
+    </script>
   </body>
 </html>

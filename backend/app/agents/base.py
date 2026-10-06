@@ -114,7 +114,11 @@ class HeldAction:
 
     confirm_id: str
     control: str
-    """The name of the control that would be pressed."""
+    """The name of the control that would be pressed, or of the site or search."""
+    verb: str = "press"
+    done: str = "pressed"
+    """How the action is said before and after it happens: press and pressed, open and
+    opened."""
 
 
 @dataclass(frozen=True)
@@ -124,6 +128,7 @@ class ConfirmedAction:
     control: str
     ok: bool
     error: str | None = None
+    done: str = "pressed"
 
 
 class PageAccess(ABC):

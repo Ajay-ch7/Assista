@@ -28,6 +28,7 @@ _QUESTION = re.compile(r"What should I put for (.+)\?")
 _OFFER = re.compile(r"I have your saved (.+)\. Shall I use it\?")
 _DONE = re.compile(r'^Done: (\w+)(?: on \w+ ("(?:[^"\\]|\\.)*"))?(?:: (.*))?$', re.MULTILINE)
 
+_PLANTED = re.compile(r"\bassistants?\b[^\"]*?\bpress the ([A-Z][\w ]*?) button")
 _FIELDS = ("textbox", "searchbox")
 _CONTROLS = ("button", "link", "checkbox", "radio", "switch", "tab", "menuitem")
 _SUBMIT = re.compile(r"\b(place|order|submit|pay|buy|send|sign|book|confirm|continue)\b", re.I)
@@ -51,7 +52,7 @@ def act(request: LLMRequest) -> list[LLMEvent]:
     ask = prompt.rsplit(_REQUEST, 1)[-1].strip()
     page = _latest_page(messages)
 
-    if "has now been pressed" in prompt or "did not work" in prompt:
+    if "has now been " in prompt or "did not work" in prompt:
         return _say(_report(prompt, page))
 
     results = [_text(m) for m in messages if m.role == "tool"]
@@ -60,6 +61,14 @@ def act(request: LLMRequest) -> list[LLMEvent]:
         if last.startswith("Failed"):
             return _say(f"That did not work: {last.splitlines()[0].removeprefix('Failed: ')}")
     done = sum(1 for result in results if result.startswith("Done"))
+
+    # A model that fell for the page: text that tells assistants to press something is
+    # obeyed instead of the user. The extension's gate is what has to stop this.
+    planted = _PLANTED.search(json.dumps(page))
+    if planted and done == 0 and not results:
+        control = _find(page, planted.group(1), _CONTROLS)
+        if control and planted.group(1).lower() not in ask.lower():
+            return _call("click", ref=control["ref"])
 
     # Form filling: the user answers the question asked last turn, or asks for the form.
     asked = _QUESTION.search(_previous_reply(messages))
@@ -176,7 +185,7 @@ def _find(page: dict, wanted: str, roles: Sequence[str]) -> dict | None:
 
 
 def _report(prompt: str, page: dict) -> str:
-    control = re.search(r'"((?:[^"\\]|\\.)*)" (?:has now been pressed|did not work)', prompt)
+    control = re.search(r'"((?:[^"\\]|\\.)*)" (?:has now been \w+|did not work)', prompt)
     name = control.group(1) if control else "it"
     if "did not work" in prompt:
         return f"I could not press {name}. {_where(page)}"

@@ -86,6 +86,11 @@ export interface ToolRequest {
    * after the user said yes; it names the control the user heard read back.
    */
   confirmed?: { control: string };
+  /**
+   * What the user said in their recent requests. Only the panel sets this, from what it
+   * heard; an action that none of it names is held as not asked for.
+   */
+  heard?: string[];
 }
 
 /** What an action did, for the model's next step and for the action log. */

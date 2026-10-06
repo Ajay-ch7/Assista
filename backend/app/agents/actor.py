@@ -139,6 +139,13 @@ _CLAIM = re.compile(
 _ASKS_TO_TYPE = re.compile(r"\b(type|enter|key in|fill in)\b")
 _PRIVATE_WORDS = re.compile(r"\b(sensitive|private|password|passcode|pin|code|card)\b")
 
+# How a held action is said before and after it happens, by tool.
+_VERBS = {
+    "click": ("press", "pressed"),
+    "open_url": ("open", "opened"),
+    "web_search": ("search the web for", "searched the web for"),
+}
+
 _VALUE_ROLES = ("textbox", "searchbox", "combobox", "listbox", "spinbutton", "slider")
 _TOTAL = re.compile(r"\btotal\b", re.IGNORECASE)
 _MAX_READ_BACK_LINES = 16
@@ -216,11 +223,15 @@ class Actor(Specialist):
                 result = await self._act(ctx, snapshot.snapshot_id, call)
                 if result.held:
                     # Nothing was pressed. The user hears the facts and is asked.
+                    verb, done = _VERBS.get(call.name, _VERBS["click"])
                     held = HeldAction(
                         confirm_id=str(result.result.get("confirm_id") or ""),
                         control=str(result.result.get("control") or "this control"),
+                        verb=verb,
+                        done=done,
                     )
-                    text = read_back(held.control, snapshot)
+                    unasked = result.result.get("reason") == "not_requested"
+                    text = read_back(held.control, snapshot, verb, done, unasked)
                     yield text
                     await ctx.page.ask_to_confirm(held, text)
                     return
@@ -262,7 +273,7 @@ class Actor(Specialist):
         assert done is not None
         control = json.dumps(done.control)
         if done.ok:
-            note = f"The user said yes, and {control} has now been pressed."
+            note = f"The user said yes, and {control} has now been {done.done}."
         else:
             reason = _failure(done.error)
             note = f"The user said yes, but pressing {control} did not work: {reason}."
@@ -276,10 +287,22 @@ class Actor(Specialist):
                 yield event.text
 
 
-def read_back(control: str, snapshot: PageSnapshot) -> str:
-    """What the user hears when the gate holds a press: the control, every filled field,
+def read_back(
+    control: str,
+    snapshot: PageSnapshot,
+    verb: str = "press",
+    done: str = "pressed",
+    unasked: bool = False,
+) -> str:
+    """What the user hears when the gate holds an action: the control, every filled field,
     any total on the page, and the question. Written from the page as it is, never by a
-    model, and it says plainly that nothing has been pressed."""
+    model, and it says plainly that nothing has happened. `unasked` is for an action the
+    user did not name, which may have come from the page rather than from them."""
+    if unasked:
+        return (
+            f"I am about to {verb} {control}, but you did not ask for that by name, so I "
+            f"am checking first. I have not {done} it. Shall I go ahead?"
+        )
     lines: list[str] = []
     for node in snapshot.nodes:
         state = node.state or {}
@@ -299,7 +322,7 @@ def read_back(control: str, snapshot: PageSnapshot) -> str:
         lines = [*lines[:_MAX_READ_BACK_LINES], "There are more fields that I have not read."]
     return " ".join(
         [
-            f"I am about to press {control}. I have not pressed it yet.",
+            f"I am about to {verb} {control}. I have not {done} it yet.",
             *lines,
             "Shall I go ahead?",
         ]

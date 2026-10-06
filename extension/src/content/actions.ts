@@ -75,7 +75,7 @@ function click(el: Element, tool: ToolRequest, defer: Defer): ActionReply {
   if (isTextField(el) && isSensitiveField(el, described.name)) {
     return focusPrivately(el, described.name);
   }
-  const hold = gateCheck(el, described.name);
+  const hold = gateCheck(el, described.name, tool.heard);
   if (hold) {
     if (!tool.confirmed) return { ok: false, error: 'held_by_gate', held: hold };
     // The user agreed to what was read back. If the control now reads differently, the
