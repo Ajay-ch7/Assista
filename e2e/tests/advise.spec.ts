@@ -100,3 +100,22 @@ test('fine print: the red flags in the terms are spoken first', async ({ context
   expect(speech).toContain('There are no refunds: All payments are non-refundable.');
   expect(speech).toContain('Your data is shared');
 });
+
+test('tables come from the snapshot and charts from a screenshot', async ({
+  context,
+  openPanel,
+}) => {
+  const stats = await context.newPage();
+  await stats.goto(demoUrl('stats.html'));
+  const { panel, received } = await recordedPanel(openPanel);
+  // Chrome can capture only the tab on show.
+  await stats.bringToFront();
+
+  const table = await ask(panel, 'what does the table show?');
+  expect(table[0]).toBe('July has the highest 2026, 341.');
+  expect(of(received, 'request_screenshot')).toEqual([]);
+
+  const chart = await ask(panel, 'what does the chart show?');
+  expect(of(received, 'request_screenshot')).toHaveLength(1);
+  expect(chart).toEqual(['I looked at the screen.']);
+});

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import AsyncIterator
 
 from app.agents.actor import Actor
@@ -53,8 +54,10 @@ class Team:
         specialist = self.specialists[name]
         # A page the snapshot cannot describe is read from a screenshot as well, unless
         # private mode keeps pictures of the screen on the device.
+        # A question about a table is answered from the table, even on a page that is thin
+        # because of a chart.
         if specialist is self.specialists["reader"]:
-            if ctx.snapshot.flags.thin and not ctx.private_mode:
+            if ctx.snapshot.flags.thin and not ctx.private_mode and not _about_table(ctx):
                 return self.page_vision
         return specialist
 
@@ -68,6 +71,13 @@ class Team:
             log.info("routed to %s, handled by %s", name, specialist.name)
         async for piece in run_specialist(specialist, ctx):
             yield piece
+
+
+_TABLE_WORDS = re.compile(r"\b(tables?|rows?|columns?)\b", re.IGNORECASE)
+
+
+def _about_table(ctx: TurnContext) -> bool:
+    return bool(ctx.snapshot.tables) and bool(_TABLE_WORDS.search(ctx.text))
 
 
 UNSURE_BEFORE = "I'm not sure about this.\n"

@@ -185,6 +185,8 @@ def _describe(request: LLMRequest) -> str:
     asked = re.search(r"The user's spoken request: (.*)$", prompt, re.DOTALL)
     question = asked.group(1).strip().lower() if asked else ""
     words = _content_words(question)
+    if page.get("tables") and re.search(r"\btables?\b", question):
+        return "CONFIDENCE: high\n" + _narrate(page["tables"][0])
     if words and not _ORIENTATION.search(question):
         return "CONFIDENCE: high\n" + _answer(page, words)
     return "CONFIDENCE: high\n" + _orient(page)
@@ -199,6 +201,29 @@ _STOPWORDS = set(
     "says tell that the there this to was what when where which who why will with you "
     "about any have has does much many".split()
 )
+
+
+def _narrate(table: dict) -> str:
+    """The takeaway first (the largest value in the second column), then the size and the
+    columns, then up to five rows as sentences."""
+    header, *rows = table.get("rows") or [[]]
+    sentences = []
+    values = [(float(row[1].replace(",", "")), row) for row in rows if _is_number(row[1:2])]
+    if values and len(header) > 1:
+        _, top = max(values, key=lambda item: item[0])
+        sentences.append(f"{top[0]} has the highest {header[1]}, {top[1]}.")
+    caption = table.get("caption") or "The table"
+    sentences.append(
+        f"{caption} has {len(rows)} rows and {len(header)} columns: {', '.join(header)}."
+    )
+    for row in rows[:5]:
+        pairs = [f"{name} is {value}" for name, value in zip(header[1:], row[1:], strict=False)]
+        sentences.append(f"{row[0]}: {', '.join(pairs)}.")
+    return " ".join(sentences)
+
+
+def _is_number(cells: list[str]) -> bool:
+    return bool(cells) and re.fullmatch(r"\d[\d,]*(\.\d+)?", cells[0].strip()) is not None
 
 
 def _content_words(question: str) -> list[str]:
