@@ -7,12 +7,14 @@ import {
   type SnapshotReply,
   type WatchTargetReply,
 } from '../shared/messages';
+import { watchSavedDetails } from '../store/savedDetails';
 import { loadWatches, onWatchesChanged } from '../store/watches';
 import { runAction } from './actions';
 import { endCapture, prepareCapture } from './capture';
 import { startCountdownWarnings } from './countdown';
 import { installKeyListener } from './keys';
 import { trackUserChoices } from './rules';
+import { setSavedDetails } from './saved';
 import { StaleRefError, buildSnapshot } from './snapshot';
 import { PageWatcher, watchTarget } from './watching';
 
@@ -67,6 +69,7 @@ if (!window.__assistaContentLoaded) {
   });
   void watcher.refresh().catch(() => undefined);
   onWatchesChanged(() => void watcher.refresh().catch(() => undefined));
+  watchSavedDetails(setSavedDetails);
   startCountdownWarnings((seconds) => tellWorker({ to: 'worker', kind: 'countdown', seconds }));
   chrome.runtime.onMessage.addListener((msg: unknown, _sender, sendResponse) => {
     if (!isAddressedTo(msg, 'content')) return false;

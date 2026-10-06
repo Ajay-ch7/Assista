@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ActionReply, ToolRequest } from '../shared/messages';
 import type { PageSnapshot } from '../shared/snapshot';
 import { runAction } from './actions';
+import { setSavedDetails } from './saved';
 import { buildSnapshot } from './snapshot';
 
 let snapshot: PageSnapshot;
@@ -158,6 +159,7 @@ describe('type', () => {
         action: 'type',
         target: { role: 'textbox', name: 'Full name' },
         detail: 'Asha Rao',
+        kind: 'name',
       },
     });
     expect(field.value).toBe('Asha Rao');
@@ -195,6 +197,49 @@ describe('type', () => {
     expect(run('type', 'Go', { text: 'x' })).toEqual({ ok: false, error: 'not_a_text_field' });
     expect(run('type', 'Code', { text: 'y' })).toEqual({ ok: false, error: 'disabled' });
     expect(run('type', 'Name')).toEqual({ ok: false, error: 'missing_text' });
+  });
+});
+
+describe('type: saved details', () => {
+  afterEach(() => setSavedDetails({}));
+
+  it('fills a field from the saved details when asked to', () => {
+    setSavedDetails({ phone: '98450 12345' });
+    page('<label>Mobile number <input id="p" type="tel"></label>');
+    expect(run('type', 'Mobile number', { use_saved: true })).toEqual({
+      ok: true,
+      result: {
+        action: 'type',
+        target: { role: 'textbox', name: 'Mobile number' },
+        detail: '98450 12345',
+        kind: 'phone',
+        fromSaved: true,
+      },
+    });
+    expect((document.getElementById('p') as HTMLInputElement).value).toBe('98450 12345');
+  });
+
+  it('says so when nothing fits the field', () => {
+    setSavedDetails({ phone: '98450 12345' });
+    page('<label>City <input></label>');
+    expect(run('type', 'City', { use_saved: true })).toEqual({ ok: false, error: 'nothing_saved' });
+  });
+
+  it('never fills a sensitive field from the saved details', () => {
+    setSavedDetails({ name: 'Asha Rao', phone: '98450 12345' });
+    page('<label>Phone PIN <input id="f"></label>');
+    expect(run('type', 'Phone PIN', { use_saved: true })).toEqual({
+      ok: false,
+      error: 'nothing_saved',
+    });
+    expect((document.getElementById('f') as HTMLInputElement).value).toBe('');
+  });
+
+  it('reports no kind for a field that is not a personal detail', () => {
+    page('<label>Special requests <input></label>');
+    const reply = run('type', 'Special requests', { text: 'A quiet table' });
+    expect(reply).toMatchObject({ ok: true });
+    expect(reply.ok && reply.result.kind).toBeUndefined();
   });
 });
 

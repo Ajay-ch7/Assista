@@ -4,6 +4,7 @@
 import { isHiddenElement } from '../safety/hiddenText';
 import { NavigationMemory, clutterKind } from './clutter';
 import { countdownSeconds, isPreticked } from './rules';
+import { savedValueFor } from './saved';
 import { isThin } from './thin';
 import { isSensitiveField } from '../safety/redaction';
 import type {
@@ -465,6 +466,10 @@ function addControl(el: Element, role: string, build: Build): void {
       node.state = { ...node.state, filled: fieldValue(el, build) !== '' };
     } else {
       node.value = clip(fieldValue(el, build), MAX_VALUE);
+      // An empty field that a saved detail fits: the assistant may offer to fill it.
+      if (node.value === '' && savedValueFor(el, name) !== null) {
+        node.state = { ...node.state, saved: true };
+      }
     }
   }
   const ref = addNode(el, build, node);

@@ -178,7 +178,8 @@ def _route(prompt: str) -> str:
     # An answer to the Actor's question, or "continue" after a private field.
     answer = re.search(r"^Previous answer: (.*)$", prompt, re.MULTILINE)
     if previous and previous.group(1) == "actor" and answer:
-        if "What should I put for" in answer.group(1) or "say continue" in answer.group(1):
+        said = answer.group(1)
+        if any(cue in said for cue in ("What should I put for", "say continue", "Shall I use it")):
             return "actor"
     return "reader"
 

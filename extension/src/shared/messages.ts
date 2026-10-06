@@ -2,6 +2,7 @@
 // Each message names its recipient in `to`; every listener ignores what is not addressed to it.
 
 import type { GateHold } from '../safety/gate';
+import type { DetailKind } from './fieldKind';
 import type { CueName } from './protocol';
 import type { PageSnapshot } from './snapshot';
 import type { WatchSummary } from './watch';
@@ -95,6 +96,10 @@ export interface ActionDone {
   detail?: string;
   /** The watches set, listed or cancelled. */
   watches?: WatchSummary[];
+  /** After typing: the kind of personal detail the field holds, so it can be saved. */
+  kind?: DetailKind;
+  /** True when the text typed came from the saved details. */
+  fromSaved?: boolean;
 }
 
 export type ActionReply =

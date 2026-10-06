@@ -80,6 +80,16 @@ PHRASES: dict[str, tuple[str, ...]] = {
         "read the action log",
         "action log",
     ),
+    "forget": (
+        "forget my details",
+        "forget my saved details",
+        "forget saved details",
+        "clear my details",
+        "clear my saved details",
+        "delete my details",
+        "delete my saved details",
+        "forget what you saved",
+    ),
 }
 _ALL = {phrase for phrases in PHRASES.values() for phrase in phrases}
 

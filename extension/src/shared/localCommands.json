@@ -60,5 +60,15 @@
     "what actions did you take",
     "read the action log",
     "action log"
+  ],
+  "forget": [
+    "forget my details",
+    "forget my saved details",
+    "forget saved details",
+    "clear my details",
+    "clear my saved details",
+    "delete my details",
+    "delete my saved details",
+    "forget what you saved"
   ]
 }

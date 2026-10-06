@@ -25,6 +25,7 @@ from app.llm.base import (
 _PAGE_DATA = re.compile(r"<page_data_\w+>\n(.*?)\n</page_data_\w+>", re.DOTALL)
 _REQUEST = "The user's spoken request: "
 _QUESTION = re.compile(r"What should I put for (.+)\?")
+_OFFER = re.compile(r"I have your saved (.+)\. Shall I use it\?")
 _DONE = re.compile(r'^Done: (\w+)(?: on \w+ ("(?:[^"\\]|\\.)*"))?(?:: (.*))?$', re.MULTILINE)
 
 _FIELDS = ("textbox", "searchbox")
@@ -66,7 +67,15 @@ def act(request: LLMRequest) -> list[LLMEvent]:
         field = _find(page, asked.group(1), _FIELDS)
         if field:
             return _call("type", ref=field["ref"], text=ask)
-    if asked or _FILL_FORM.search(ask.lower()):
+    # The user answers an offer to use a detail saved on their device.
+    offered = _OFFER.search(_previous_reply(messages))
+    if offered and done == 0:
+        field = _find(page, offered.group(1), _FIELDS)
+        if field and re.match(r"(yes|yeah|ok|okay|sure|please do)\b", ask.lower()):
+            return _call("type", ref=field["ref"], use_saved=True)
+        if field:
+            return _call("ask_user", question=f"What should I put for {field.get('name')}?")
+    if asked or offered or _FILL_FORM.search(ask.lower()):
         return _next_field(page, results)
 
     steps = [s for s in re.split(r"\s+(?:and then|then|and)\s+", ask) if s.strip()]
@@ -134,6 +143,9 @@ def _next_field(page: dict, results: Sequence[str]) -> list[LLMEvent]:
             if not node.get("state", {}).get("filled"):
                 return _call("type", ref=node["ref"], text="")
         elif not node.get("value"):
+            if node.get("state", {}).get("saved"):
+                question = f"I have your saved {node.get('name')}. Shall I use it?"
+                return _call("ask_user", question=question)
             return _call("ask_user", question=f"What should I put for {node.get('name')}?")
     buttons = [n for n in page.get("nodes", []) if n.get("role") == "button"]
     submit = next((b for b in buttons if _SUBMIT.search(b.get("name", ""))), None)

@@ -4,6 +4,7 @@
 import { gateCheck } from '../safety/gate';
 import { isSensitiveField } from '../safety/redaction';
 import type { ActionDone, ActionReply, ToolRequest } from '../shared/messages';
+import { kindOf, savedValueFor } from './saved';
 import { StaleRefError, describeElement, resolveRef } from './snapshot';
 
 /** Runs something after the reply has been sent; a click can unload the page. */
@@ -35,7 +36,7 @@ export function runAction(
       case 'click':
         return click(target(tool), tool, defer);
       case 'type':
-        return type(target(tool), tool.args.text);
+        return type(target(tool), tool.args.text, tool.args.use_saved === true);
       case 'select':
         return select(target(tool), tool.args.option);
       case 'focus':
@@ -86,9 +87,14 @@ function click(el: Element, tool: ToolRequest, defer: Defer): ActionReply {
   return done({ action: 'click', target: described });
 }
 
-function type(el: Element, text: unknown): ActionReply {
-  if (typeof text !== 'string') return failed('missing_text');
+function type(el: Element, text: unknown, useSaved: boolean): ActionReply {
   const described = describeElement(el);
+  if (useSaved) {
+    // The value comes from the device's own store; the model never sees it beforehand.
+    text = isTextField(el) ? savedValueFor(el, described.name) : null;
+    if (typeof text !== 'string') return failed('nothing_saved');
+  }
+  if (typeof text !== 'string') return failed('missing_text');
   if (!isTextField(el)) return failed('not_a_text_field');
   if (isDisabled(el) || (el as HTMLInputElement).readOnly === true) return failed('disabled');
   // Secrets are typed by the user, never by the assistant: nothing spoken or sent to a
@@ -96,7 +102,11 @@ function type(el: Element, text: unknown): ActionReply {
   if (isSensitiveField(el, described.name)) return focusPrivately(el, described.name);
   reveal(el);
   setValue(el, text);
-  return done({ action: 'type', target: described, detail: text });
+  const typed: ActionDone = { action: 'type', target: described, detail: text };
+  const kind = kindOf(el, described.name);
+  if (kind) typed.kind = kind;
+  if (useSaved) typed.fromSaved = true;
+  return done(typed);
 }
 
 function select(el: Element, option: unknown): ActionReply {

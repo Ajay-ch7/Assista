@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
 import type { PageSnapshot, SnapshotNode } from '../shared/snapshot';
+import { setSavedDetails } from './saved';
 import { StaleRefError, buildSnapshot, resolveRef } from './snapshot';
 
 function snapshotOf(html: string): PageSnapshot {
@@ -196,6 +197,25 @@ describe('buildSnapshot: private fields', () => {
     expect(code).toMatchObject({ sensitive: true, value: null, state: { filled: false } });
     expect(name.state).not.toHaveProperty('filled');
     expect(JSON.stringify(snapshot)).not.toContain('hunter2');
+  });
+});
+
+describe('buildSnapshot: saved details', () => {
+  it('marks empty fields a saved detail fits, without the value', () => {
+    setSavedDetails({ name: 'Asha Rao', phone: '98450 12345' });
+    const snapshot = snapshotOf(`
+      <label>Full name <input></label>
+      <label>Phone <input type="tel" value="12345"></label>
+      <label>City <input></label>
+      <label>Password <input type="password"></label>`);
+    setSavedDetails({});
+    const [name, phone, city, password] = byRole(snapshot, 'textbox');
+    expect(name.state).toMatchObject({ saved: true });
+    expect(phone.state).not.toHaveProperty('saved');
+    expect(city.state).not.toHaveProperty('saved');
+    expect(password.state).not.toHaveProperty('saved');
+    expect(JSON.stringify(snapshot)).not.toContain('Asha');
+    expect(JSON.stringify(snapshot)).not.toContain('98450');
   });
 });
 

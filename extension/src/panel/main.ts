@@ -25,6 +25,7 @@ import {
   type Preferences,
 } from '../store/preferences';
 import { describeActions, entryFor, loadActions, logAction } from '../store/actionLog';
+import { forgetSavedDetails, saveDetail } from '../store/savedDetails';
 import { watchKeySettings } from '../store/settings';
 import { Cues, type CueSound } from './cues';
 import { cancelSay, say } from './localVoice';
@@ -187,6 +188,12 @@ function runLocalCommand(command: LocalCommand): void {
       void loadActions().then(
         (entries) => answerLocally(describeActions(entries)),
         () => answerLocally('I could not read my action log.'),
+      );
+      break;
+    case 'forget':
+      void forgetSavedDetails().then(
+        () => answerLocally('I have forgotten your saved details.'),
+        () => answerLocally('I could not clear your saved details.'),
       );
       break;
     case 'spell': {
@@ -509,6 +516,10 @@ function sendToolResult(turn: string, callId: string, tool: ToolRequest, reply: 
     void cues.play('link');
   }
   void logAction(entryFor(tool, reply, Date.now(), Boolean(tool.confirmed)));
+  // A personal detail the user just gave is remembered on this device for other forms.
+  if (reply.ok && reply.result.kind && reply.result.detail && !reply.result.fromSaved) {
+    void saveDetail(reply.result.kind, reply.result.detail);
+  }
   // Private mode: focus is now on a field the user must type themselves.
   if (!reply.ok && reply.sensitive) void cues.play('private');
   if (turn !== activeTurn) return;

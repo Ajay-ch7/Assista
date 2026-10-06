@@ -9,6 +9,8 @@ export interface NodeState {
   level?: number;
   /** On sensitive fields only: whether something has been typed. The value is never sent. */
   filled?: boolean;
+  /** On empty fields only: a saved detail on this device fits. Its value is not sent. */
+  saved?: boolean;
 }
 
 export interface SnapshotNode {

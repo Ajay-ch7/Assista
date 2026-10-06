@@ -188,12 +188,20 @@ class FakePage:
         self.asked = False
         self.after_submit: dict[str, Any] | None = None
         """The page shown once a gated control has been pressed."""
+        self.saved: dict[str, str] = {}
+        """Details saved on the device, by field name. Their fields are marked saved."""
         self.watches: list[dict[str, Any]] = []
         """The watches set, as the extension would summarise them."""
 
     def snapshot(self) -> dict[str, Any]:
         self._version += 1
-        return {**self._snapshot, "snapshot_id": f"page-{self._version}"}
+        nodes = [
+            {**node, "state": {**node.get("state", {}), "saved": True}}
+            if node.get("name") in self.saved and node.get("value") == ""
+            else node
+            for node in self._snapshot["nodes"]
+        ]
+        return {**self._snapshot, "nodes": nodes, "snapshot_id": f"page-{self._version}"}
 
     def type_privately(self, name: str) -> None:
         """The user types into a sensitive field themselves."""
@@ -251,6 +259,10 @@ class FakePage:
                 "ok": True,
                 "result": {"action": name, "detail": summary["value"], "watches": [summary]},
             }
+        if name == "type" and args.get("use_saved"):
+            if target["name"] not in self.saved:
+                return {"ok": False, "error": "nothing_saved"}
+            args = {"text": self.saved[target["name"]]}
         if name == "type":
             node["value"] = args.get("text", "")
             return {

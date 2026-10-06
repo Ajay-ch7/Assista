@@ -28,8 +28,18 @@ TYPE = _tool(
     "type",
     "Put text into a text field, replacing what is there. On a sensitive field this types "
     "nothing: it moves focus there so the user can type the value themselves.",
-    {"ref": _REF, "text": {"type": "string", "description": "The text to put in the field."}},
-    ["ref", "text"],
+    {
+        "ref": _REF,
+        "text": {"type": "string", "description": "The text to put in the field."},
+        "use_saved": {
+            "type": "boolean",
+            "description": (
+                "Fill the field with the user's saved detail instead of `text`. Only for a "
+                "field whose state has saved true, and only after the user agreed."
+            ),
+        },
+    },
+    ["ref"],
 )
 SELECT = _tool(
     "select",

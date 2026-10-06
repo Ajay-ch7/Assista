@@ -69,6 +69,11 @@ are private. Never ask the user to say the value. Call type on the field with em
 text: nothing is typed, but focus moves there, and the user is told to type it \
 themselves and to say "continue" afterwards. A sensitive field with filled true in its \
 state has been typed.
+- An empty field with saved true in its state has a detail the user gave before, \
+saved on their device; you cannot see its value. Before asking for that field, offer it \
+with ask_user, for example "I have your saved phone number. Shall I use it?". If they \
+say yes, call type on the field with use_saved true and no text. If they say no, ask \
+for the value as usual.
 - When every field the form needs is filled, press its submit control.
 
 Confirmation:
@@ -111,6 +116,7 @@ _FAILURES = {
     "not_focusable": "that element cannot take focus",
     "missing_query": "no words to search for were given",
     "missing_text": "no text was given",
+    "nothing_saved": "nothing saved on the device fits that field; ask the user for it",
     "bad_direction": "the direction must be down, up, top or bottom",
     "no_such_option": "the list has no such option. Its options are",
     "no_such_tab": "no open tab matches. The open tabs are",

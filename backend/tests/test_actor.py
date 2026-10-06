@@ -495,7 +495,37 @@ def test_talk_about_a_private_field_that_is_already_typed_moves_nothing():
     assert result.speech[0] == "You have already typed the one-time code."
 
 
+def test_a_saved_detail_is_offered_and_used_without_its_value_passing_through_the_model():
+    page = FakePage()
+    page.saved = {"Full name": "Asha Rao"}
+    llm = MockLLM()
+    settings = Settings()
+    with session(Deps(settings=settings, respond=model_responder(settings, llm))) as client:
+        offer = client.ask("fill in the form", page=page)
+        used = client.ask("yes", page=page)
+    assert offer.speech == ["I have your saved Full name.", "Shall I use it?"]
+    assert offer.of_type("tool_call") == []
+    assert tool_calls(used) == [("type", "e3", {"use_saved": True})]
+    assert used.speech == ["What should I put for City?"]
+    # The value went from the device to the page. The model only knew one was saved.
+    assert page._snapshot["nodes"][2]["value"] == "Asha Rao"
+    offer_request = llm.specialist_requests[0]
+    assert "Asha Rao" not in str(offer_request.messages)
+    assert '"saved":true' in str(offer_request.messages)
+
+
+def test_a_declined_saved_detail_is_asked_for_instead():
+    page = FakePage()
+    page.saved = {"Full name": "Asha Rao"}
+    with session() as client:
+        client.ask("fill in the form", page=page)
+        declined = client.ask("no", page=page)
+    assert declined.of_type("tool_call") == []
+    assert declined.speech == ["What should I put for Full name?"]
+
+
 def test_the_prompt_states_the_safety_rules():
+    assert "you cannot see its value" in ROLE
     assert "unless a tool result in this turn says Done" in ROLE
     assert "Never ask the user to say the value" in ROLE
     assert "one field at a time" in ROLE
