@@ -195,6 +195,10 @@ def test_a_scanned_document_says_it_cannot_be_read():
     [
         ({"data": None, "error": "too_large"}, "This PDF is too big for me to read."),
         ({"data": None, "error": "fetch_failed: 403"}, "I could not download this PDF."),
+        (
+            {"data": None, "error": "file_access_off"},
+            "This PDF is a file on your computer, and I need your permission to open files.",
+        ),
         ({"data": "not base64!"}, "I could not open this PDF."),
     ],
 )

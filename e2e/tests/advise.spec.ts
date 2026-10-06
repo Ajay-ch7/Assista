@@ -2,6 +2,8 @@
 // mock model). Facts the user must not miss, such as a box ticked before they touched it, are
 // found by code in the extension and announced by code in the backend.
 
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { ask, demoUrl, expect, of, recordedPanel, test } from './fixtures';
 
 interface Rules {
@@ -141,4 +143,21 @@ test('a PDF in the tab is fetched by the extension and read', async ({ context, 
   expect(full.slice(0, 2)).toEqual(['Page 2.', 'Warranty.']);
   // The file was fetched once, and the follow-up was read from memory.
   expect(of(sent, 'document')).toHaveLength(1);
+});
+
+const LOCAL_PDF = pathToFileURL(resolve(import.meta.dirname, '../../demo-pages/guide.pdf')).href;
+
+// When file access is off, the user hears how to turn it on (backend/tests/test_documents.py).
+// It cannot be turned off here: an extension loaded from the command line comes back from
+// that restart disabled, and locked.
+test('a PDF on the computer is read once file access is on', async ({ context, openPanel }) => {
+  const pdf = await context.newPage();
+  await pdf.goto(LOCAL_PDF).catch(() => undefined);
+  const { panel, sent } = await recordedPanel(openPanel);
+  await pdf.bringToFront();
+
+  // The test browser loads the extension with file access already on.
+  const headline = await ask(panel, 'what is this document?');
+  expect(headline[0]).toBe('This page is titled Riverside Outfitters Returns and Warranty Guide.');
+  expect(of(sent, 'document')[0]).toMatchObject({ url: LOCAL_PDF, mime: 'application/pdf' });
 });

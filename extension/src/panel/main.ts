@@ -28,6 +28,7 @@ import { describeActions, entryFor, loadActions, logAction } from '../store/acti
 import { watchKeySettings } from '../store/settings';
 import { Cues } from './cues';
 import { cancelSay, say } from './localVoice';
+import { readLocalPdf } from './localFile';
 import { Mic } from './mic';
 import { Player } from './player';
 import { ReplyRecorder } from './replies';
@@ -298,6 +299,10 @@ function microphoneFailed(error: unknown): void {
   if (error instanceof DOMException && error.name === 'NotAllowedError') openPermissionPage();
 }
 
+function openFileAccessSettings(): void {
+  void chrome.tabs.create({ url: `chrome://extensions/?id=${chrome.runtime.id}` });
+}
+
 function openPermissionPage(): void {
   void chrome.tabs.create({ url: chrome.runtime.getURL('permission.html') });
 }
@@ -423,6 +428,11 @@ async function replyWithDocument(turn: string): Promise<void> {
   } catch (error) {
     reply = { ok: false, error: String(error) };
   }
+  // A PDF on the computer: the worker has checked it may be opened; the panel reads it.
+  if (!reply.ok && reply.error === 'local_file' && reply.url) reply = await readLocalPdf(reply.url);
+  // Not allowed yet: open Assista's details page, where the switch is. The backend tells
+  // the user so.
+  if (!reply.ok && reply.error === 'file_access_off') openFileAccessSettings();
   if (turn !== activeTurn) return;
   socket.send(
     reply.ok

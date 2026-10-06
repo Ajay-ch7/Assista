@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   MAX_DOCUMENT_BYTES,
   fetchDocument,
+  isLocalFile,
   isPdfUrl,
   pdfSnapshot,
   servesPdf,
@@ -26,11 +27,20 @@ describe('isPdfUrl', () => {
     ['http://127.0.0.1:8787/files/Report.PDF?v=2#page=3', true],
     ['https://example.com/guide.pdf.html', false],
     ['https://example.com/pdf', false],
-    ['file:///C:/guide.pdf', false],
+    ['file:///C:/Users/me/Resume.pdf', true],
+    ['file:///C:/notes.txt', false],
     ['not a url', false],
     [undefined, false],
   ])('%s is %s', (url, expected) => {
     expect(isPdfUrl(url)).toBe(expected);
+  });
+});
+
+describe('isLocalFile', () => {
+  it('is true only for files on the computer', () => {
+    expect(isLocalFile('file:///C:/Users/me/Resume.pdf')).toBe(true);
+    expect(isLocalFile('https://example.com/Resume.pdf')).toBe(false);
+    expect(isLocalFile(undefined)).toBe(false);
   });
 });
 
@@ -50,6 +60,7 @@ describe('servesPdf', () => {
     };
     expect(await servesPdf('https://a.example/', failing)).toBe(false);
     expect(await servesPdf('chrome://newtab/', respond(PDF).fetchFn)).toBe(false);
+    expect(await servesPdf('file:///C:/scan', respond(PDF).fetchFn)).toBe(false);
   });
 });
 

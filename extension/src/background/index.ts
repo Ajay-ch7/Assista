@@ -14,7 +14,7 @@ import {
   type ToWorker,
   type ToolRequest,
 } from '../shared/messages';
-import { fetchDocument, isPdfUrl, pdfSnapshot, servesPdf } from './documents';
+import { fetchDocument, isLocalFile, isPdfUrl, pdfSnapshot, servesPdf } from './documents';
 import { cropImage } from './screenshot';
 import { findTab, normalizeUrl, pickTargetTab } from './tabs';
 
@@ -138,6 +138,13 @@ async function documentOfTargetTab(): Promise<DocumentReply> {
   const tab = await targetTab();
   if (tab?.id === undefined || !tab.url) return { ok: false, error: 'no_tab' };
   if (!isPdfUrl(tab.url) && !(await servesPdf(tab.url))) return { ok: false, error: 'not_pdf' };
+  if (isLocalFile(tab.url)) {
+    // Chrome lets an extension open files only when the user has allowed it.
+    if (!(await chrome.extension.isAllowedFileSchemeAccess())) {
+      return { ok: false, error: 'file_access_off' };
+    }
+    return { ok: false, error: 'local_file', url: tab.url };
+  }
   return fetchDocument(tab.url);
 }
 

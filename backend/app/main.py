@@ -81,6 +81,12 @@ _SCREENSHOT_FAILED = "I could not capture the screen."
 # What the user hears when a PDF cannot be fetched, by the extension's error code.
 _DOCUMENT_ERRORS = {
     "too_large": "This PDF is too big for me to read. I can read files up to 10 megabytes.",
+    # The extension opens its details page as this is said (extension/src/panel/main.ts).
+    "file_access_off": (
+        "This PDF is a file on your computer, and I need your permission to open files. I "
+        "have opened Assista's settings in a new tab. Turn on the switch called Allow access "
+        "to file URLs. Assista will restart; then ask me again."
+    ),
     "not_pdf": "I could not get a PDF file from this tab.",
     "fetch_failed": "I could not download this PDF.",
     "no_tab": "I can't find a document to read.",

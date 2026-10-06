@@ -1,6 +1,8 @@
 // PDF documents. Chrome's PDF viewer shows no page a content script can read, so the
 // worker fetches the file itself, with the user's own login, and the backend reads it.
 // Only the address of the tab on show is ever fetched: the backend cannot name another.
+// A PDF on the user's own computer (file://) is read by the panel instead, since fetch
+// cannot open files; it needs "Allow access to file URLs" turned on for Assista.
 
 import type { DocumentReply } from '../shared/messages';
 import type { PageSnapshot } from '../shared/snapshot';
@@ -15,10 +17,15 @@ export function isPdfUrl(url: string | undefined): boolean {
   if (!url) return false;
   try {
     const parsed = new URL(url);
-    return /^https?:$/.test(parsed.protocol) && /\.pdf$/i.test(parsed.pathname);
+    return /^(https?|file):$/.test(parsed.protocol) && /\.pdf$/i.test(parsed.pathname);
   } catch {
     return false;
   }
+}
+
+/** True for a file on the user's own computer. */
+export function isLocalFile(url: string | undefined): boolean {
+  return (url ?? '').startsWith('file:');
 }
 
 /** Asks the server whether the address is a PDF, for addresses that do not say so. */
@@ -66,7 +73,11 @@ export async function fetchDocument(url: string, fetchFn: Fetch = fetch): Promis
   const declared = Number(response.headers.get('content-length') ?? 0);
   if (declared > MAX_DOCUMENT_BYTES) return { ok: false, error: 'too_large' };
 
-  const bytes = new Uint8Array(await response.arrayBuffer());
+  return pdfReply(url, new Uint8Array(await response.arrayBuffer()));
+}
+
+/** Checks that `bytes` is a PDF of a size the backend accepts, and encodes it. */
+export function pdfReply(url: string, bytes: Uint8Array): DocumentReply {
   if (bytes.length > MAX_DOCUMENT_BYTES) return { ok: false, error: 'too_large' };
   if (!startsWithPdfMarker(bytes)) return { ok: false, error: 'not_pdf' };
   return { ok: true, url, data: toBase64(bytes), mime: 'application/pdf' };

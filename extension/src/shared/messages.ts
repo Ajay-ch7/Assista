@@ -49,7 +49,9 @@ export type ScreenshotReply =
 
 /** The PDF on show, as base64 data. */
 export type DocumentReply =
-  { ok: true; url: string; data: string; mime: string } | { ok: false; error: string };
+  | { ok: true; url: string; data: string; mime: string }
+  /** With error 'local_file', `url` is a file on the computer for the panel to read. */
+  | { ok: false; error: string; url?: string };
 
 /** One action tool to run, as the backend's tool_call asked for it. */
 export interface ToolRequest {
