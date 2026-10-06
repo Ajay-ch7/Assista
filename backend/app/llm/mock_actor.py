@@ -2,8 +2,7 @@
 calls by keyword, with no network and no key.
 
 It follows the Actor's conversation the way the real model is asked to: one step at a
-time, one form field at a time, a private field handed to the user, a read-back when the
-gate holds an action, and a report after the user confirms.
+time, one form field at a time, and a report after the user confirms a held action.
 """
 
 from __future__ import annotations
@@ -49,15 +48,6 @@ def act(request: LLMRequest) -> list[LLMEvent]:
     results = [_text(m) for m in messages if m.role == "tool"]
     if results:
         last = results[-1]
-        if last.startswith("HELD"):
-            return _say(_read_back(last, page))
-        if last.startswith("PRIVATE"):
-            field = re.search(r'"(.+?)"', last)
-            name = field.group(1) if field else "this field"
-            return _say(
-                f"{name} is a private field, so I will not type it for you. I have moved "
-                "to it. Type it on your keyboard, then say continue."
-            )
         if last.startswith("Failed"):
             return _say(f"That did not work: {last.splitlines()[0].removeprefix('Failed: ')}")
     done = sum(1 for result in results if result.startswith("Done"))
@@ -150,24 +140,6 @@ def _find(page: dict, wanted: str, roles: Sequence[str]) -> dict | None:
 
 
 # Speaking
-
-
-def _read_back(held: str, page: dict) -> str:
-    control = re.search(r'"(.+?)"', held)
-    lines = [f"I am about to press {control.group(1) if control else 'this control'}."]
-    for node in page.get("nodes", []):
-        name, role = node.get("name") or "A field", node.get("role")
-        state = node.get("state", {})
-        if role in _FIELDS and node.get("sensitive"):
-            lines.append(f"{name} is {'entered' if state.get('filled') else 'empty'}.")
-        elif role in (*_FIELDS, "combobox") and node.get("value"):
-            lines.append(f"{name} is {node['value']}.")
-        elif role == "checkbox" and state.get("checked"):
-            lines.append(f"{name} is ticked.")
-        elif "total" in str(node.get("text", "")).lower():
-            lines.append(f"{node['text'].rstrip('.')}.")
-    lines.append("Shall I go ahead?")
-    return " ".join(lines)
 
 
 def _report(prompt: str, page: dict) -> str:

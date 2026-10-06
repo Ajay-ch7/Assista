@@ -1,5 +1,6 @@
 // Phase 3: acting safely, through the real extension and the real backend (with the mock
-// model, which turns plainly worded requests into tool calls by keyword).
+// model, which turns plainly worded requests into tool calls by keyword). What the user
+// hears at the gate and at a private field is written by the backend's code, not a model.
 
 import type { Page } from '@playwright/test';
 import { ask, demoUrl, expect, test } from './fixtures';
@@ -144,6 +145,7 @@ test('exit check: the form is filled and submitted by voice, behind the gate, wi
   const readBack = await ask(panel, 'continue');
   expect(readBack).toEqual([
     'I am about to press Place order.',
+    'I have not pressed it yet.',
     'Order total: 4,598 rupees.',
     'Full name is Asha Rao.',
     'Phone is 98450 12345.',
