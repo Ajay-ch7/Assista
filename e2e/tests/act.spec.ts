@@ -3,38 +3,8 @@
 // hears at the gate and at a private field is written by the backend's code, not a model.
 
 import type { Page } from '@playwright/test';
-import { ask, demoUrl, expect, test } from './fixtures';
+import { ask, demoUrl, expect, of, recordedPanel, test } from './fixtures';
 
-interface Frame {
-  type: string;
-  [key: string]: unknown;
-}
-
-/** Opens the panel and records every text frame it sends and receives, raw and parsed. */
-async function recordedPanel(openPanel: () => Promise<Page>) {
-  const panel = await openPanel();
-  const sent: Frame[] = [];
-  const received: Frame[] = [];
-  const raw: string[] = [];
-  panel.on('websocket', (ws) => {
-    ws.on('framesent', (frame) => {
-      if (typeof frame.payload !== 'string') return;
-      raw.push(frame.payload);
-      sent.push(JSON.parse(frame.payload));
-    });
-    ws.on('framereceived', (frame) => {
-      if (typeof frame.payload !== 'string') return;
-      raw.push(frame.payload);
-      received.push(JSON.parse(frame.payload));
-    });
-  });
-  // Reload so the WebSocket is opened after the recorders are attached.
-  await panel.reload();
-  await expect(panel.locator('#status')).toHaveAttribute('data-connection', 'open');
-  return { panel, sent, received, raw };
-}
-
-const of = (frames: Frame[], type: string) => frames.filter((frame) => frame.type === type);
 const lastReply = (panel: Page) => panel.locator('#log li[data-role="assistant"]').last();
 
 test('voice navigation: a spoken command presses a button, and the log remembers it', async ({

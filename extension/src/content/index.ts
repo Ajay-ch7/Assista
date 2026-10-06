@@ -5,6 +5,7 @@ import { isAddressedTo, type CaptureReply, type SnapshotReply } from '../shared/
 import { runAction } from './actions';
 import { endCapture, prepareCapture } from './capture';
 import { installKeyListener } from './keys';
+import { trackUserChoices } from './rules';
 import { StaleRefError, buildSnapshot } from './snapshot';
 
 declare global {
@@ -53,4 +54,5 @@ if (!window.__assistaContentLoaded) {
     }
   });
   installKeyListener();
+  trackUserChoices();
 }

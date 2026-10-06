@@ -1,34 +1,7 @@
 // Phase 2: understanding pages, through the real extension and the real backend (with the
 // mock model, which routes by keyword and describes pictures by their alt text).
 
-import type { Page } from '@playwright/test';
-import { ask, demoUrl, expect, test } from './fixtures';
-
-interface Frame {
-  type: string;
-  [key: string]: unknown;
-}
-
-/** Opens the panel and records every text frame it sends and receives. */
-async function recordedPanel(openPanel: () => Promise<Page>) {
-  const panel = await openPanel();
-  const sent: Frame[] = [];
-  const received: Frame[] = [];
-  panel.on('websocket', (ws) => {
-    ws.on('framesent', (frame) => {
-      if (typeof frame.payload === 'string') sent.push(JSON.parse(frame.payload));
-    });
-    ws.on('framereceived', (frame) => {
-      if (typeof frame.payload === 'string') received.push(JSON.parse(frame.payload));
-    });
-  });
-  // Reload so the WebSocket is opened after the recorders are attached.
-  await panel.reload();
-  await expect(panel.locator('#status')).toHaveAttribute('data-connection', 'open');
-  return { panel, sent, received };
-}
-
-const of = (frames: Frame[], type: string) => frames.filter((frame) => frame.type === type);
+import { ask, demoUrl, expect, of, recordedPanel, test } from './fixtures';
 
 const SITES = [
   ['shop.html', 'This page is titled Trail Backpack 30L - Riverside Outfitters.'],

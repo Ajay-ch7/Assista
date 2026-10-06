@@ -62,3 +62,35 @@ export async function ask(panel: Page, text: string): Promise<string[]> {
   await expect(panel.locator('#status')).toHaveAttribute('data-turn', /^(done|error)$/);
   return panel.locator(`#log li:nth-child(n+${before + 1})[data-role="assistant"]`).allInnerTexts();
 }
+
+export interface Frame {
+  type: string;
+  [key: string]: unknown;
+}
+
+/** Opens the panel and records every text frame it sends and receives, raw and parsed. */
+export async function recordedPanel(openPanel: () => Promise<Page>) {
+  const panel = await openPanel();
+  const sent: Frame[] = [];
+  const received: Frame[] = [];
+  const raw: string[] = [];
+  panel.on('websocket', (ws) => {
+    ws.on('framesent', (frame) => {
+      if (typeof frame.payload !== 'string') return;
+      raw.push(frame.payload);
+      sent.push(JSON.parse(frame.payload));
+    });
+    ws.on('framereceived', (frame) => {
+      if (typeof frame.payload !== 'string') return;
+      raw.push(frame.payload);
+      received.push(JSON.parse(frame.payload));
+    });
+  });
+  // Reload so the WebSocket is opened after the recorders are attached.
+  await panel.reload();
+  await expect(panel.locator('#status')).toHaveAttribute('data-connection', 'open');
+  return { panel, sent, received, raw };
+}
+
+export const of = (frames: Frame[], type: string) =>
+  frames.filter((frame) => frame.type === type);

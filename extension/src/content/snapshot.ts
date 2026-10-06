@@ -3,6 +3,7 @@
 
 import { isHiddenElement } from '../safety/hiddenText';
 import { NavigationMemory, clutterKind } from './clutter';
+import { countdownSeconds, isPreticked } from './rules';
 import { isThin } from './thin';
 import { isSensitiveField } from '../safety/redaction';
 import type {
@@ -10,6 +11,7 @@ import type {
   PageSnapshot,
   SnapshotImage,
   SnapshotNode,
+  SnapshotRules,
   SnapshotTable,
 } from '../shared/snapshot';
 
@@ -175,6 +177,7 @@ interface Build {
   hiddenRemoved: number;
   clutterRemoved: number;
   imagesWithoutAlt: number;
+  preticked: string[];
   navigation: NavigationMemory;
   hiddenCache: WeakMap<Element, boolean>;
 }
@@ -218,6 +221,7 @@ export function buildSnapshot(doc: Document = document): PageSnapshot {
     hiddenRemoved: 0,
     clutterRemoved: 0,
     imagesWithoutAlt: 0,
+    preticked: [],
     navigation: new NavigationMemory(),
     hiddenCache: new WeakMap(),
   };
@@ -232,7 +236,7 @@ export function buildSnapshot(doc: Document = document): PageSnapshot {
     nodes: build.nodes,
     tables: build.tables,
     images: build.images,
-    rules: { preticked: [], countdowns: [] },
+    rules: rulesOf(build),
     flags: {
       has_canvas: doc.querySelector('canvas') !== null,
       thin: isThin(doc, build.nodes, build.images, build),
@@ -410,11 +414,13 @@ function isDataTable(table: HTMLTableElement): boolean {
 
 // Nodes
 
-function addNode(el: Element, build: Build, node: Omit<SnapshotNode, 'ref'>): void {
-  if (build.nodes.length >= MAX_NODES) return;
+/** Returns the new node's ref, or null when the snapshot is full. */
+function addNode(el: Element, build: Build, node: Omit<SnapshotNode, 'ref'>): string | null {
+  if (build.nodes.length >= MAX_NODES) return null;
   const ref = `e${++build.nextId.e}`;
   build.elements.set(ref, el);
   build.nodes.push({ ref, ...node });
+  return ref;
 }
 
 function addText(el: Element, role: string, raw: string, build: Build): void {
@@ -437,7 +443,8 @@ function addControl(el: Element, role: string, build: Build): void {
       node.value = clip(fieldValue(el, build), MAX_VALUE);
     }
   }
-  addNode(el, build, node);
+  const ref = addNode(el, build, node);
+  if (ref && isPreticked(el, role)) build.preticked.push(ref);
 }
 
 function stateOf(el: Element, role: string): NodeState {
@@ -499,6 +506,22 @@ function addTable(table: HTMLTableElement, build: Build): void {
     .slice(0, MAX_TABLE_ROWS)
     .map((row) => Array.from(row.cells, (cell) => clip(visibleText(cell, build), MAX_CELL)));
   build.tables.push({ ref, caption: clip(caption, MAX_NAME), rows });
+}
+
+// Rules
+
+/** Pre-ticked boxes were found during the walk; countdowns are found in the text read. */
+function rulesOf(build: Build): SnapshotRules {
+  const countdowns: SnapshotRules['countdowns'] = [];
+  for (const node of build.nodes) {
+    const text = node.text || (node.role === 'heading' ? node.name : '');
+    if (!text) continue;
+    const el = build.elements.get(node.ref);
+    const isTimer = Boolean(el?.matches('[role="timer"]') || el?.querySelector('[role="timer"]'));
+    const seconds = countdownSeconds(text, isTimer);
+    if (seconds !== null) countdowns.push({ ref: node.ref, seconds_left: seconds });
+  }
+  return { preticked: build.preticked, countdowns };
 }
 
 // Names and text
