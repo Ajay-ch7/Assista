@@ -130,6 +130,44 @@ CHECKOUT_SNAPSHOT: dict[str, Any] = {
     "rules": {"preticked": ["e7"], "countdowns": []},
 }
 
+TERMS_SNAPSHOT: dict[str, Any] = {
+    "url": "http://127.0.0.1:8787/terms.html",
+    "title": "Terms of membership - StreamBox",
+    "snapshot_id": "terms-1",
+    "nodes": [
+        {"ref": "e1", "role": "heading", "name": "StreamBox membership terms"},
+        {"ref": "e2", "role": "heading", "name": "2. Free trial and billing"},
+        {
+            "ref": "e3",
+            "role": "paragraph",
+            "text": "Your membership starts with a 7-day free trial. Unless you cancel before "
+            "the trial ends, your membership renews automatically every month and we charge "
+            "649 rupees to your saved card each month until you cancel.",
+        },
+        {"ref": "e4", "role": "heading", "name": "4. Cancelling"},
+        {
+            "ref": "e5",
+            "role": "paragraph",
+            "text": "You can cancel only by calling our membership line between 10 am and 4 "
+            "pm on weekdays.",
+        },
+        {"ref": "e6", "role": "heading", "name": "5. Refunds"},
+        {
+            "ref": "e7",
+            "role": "paragraph",
+            "text": "All payments are non-refundable. We do not give refunds or credits for "
+            "partly used periods.",
+        },
+        {"ref": "e8", "role": "heading", "name": "7. Disputes"},
+        {
+            "ref": "e9",
+            "role": "paragraph",
+            "text": "Any dispute will be settled by binding arbitration, and you give up the "
+            "right to take part in a class action.",
+        },
+    ],
+}
+
 _GATED = re.compile(r"\b(pay|buy|place order|submit|confirm|delete|send)\b", re.IGNORECASE)
 
 

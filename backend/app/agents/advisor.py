@@ -1,5 +1,6 @@
-"""Advisor: money and risk. Tells the user what they will really pay (F08) and warns of
-tricks that push them to pay more or decide in a hurry (F14).
+"""Advisor: money and risk. Tells the user what they will really pay (F08), warns of
+tricks that push them to pay more or decide in a hurry (F14), and finds the red flags in
+terms and conditions (F15).
 
 Boxes the page ticked in advance are found by code in the extension (rules.preticked), so
 the warning about them is written here in code too: the user hears it whatever the model
@@ -53,7 +54,21 @@ Boxes the page ticked in advance are listed under rules.preticked. Count them in
 total if they are ticked, but do not warn about them yourself: Assista tells the user \
 about them after your answer.
 Call something a trick only if the page data shows it. If the user asks whether the \
-page is trying to trick them and you find nothing, say so."""
+page is trying to trick them and you find nothing, say so.
+
+Fine print, when the user asks about terms and conditions, the small print, or what \
+they are agreeing to:
+- Give the red flags first, the most costly first: automatic renewal, a free trial that \
+turns into a paid plan, repeating charges, no refunds, a hard or limited way to cancel, \
+long notice periods, prices that can change without the user agreeing, fees for \
+leaving, personal data shared or sold, giving up the right to go to court or join a \
+class action, and limits on what the company owes the user.
+- For each red flag, say in one short sentence what it means for the user, with the \
+amounts, days and dates exactly as the page gives them. Name the section when the page \
+names its sections.
+- Then, if there is room, say in one sentence what the rest of the terms cover.
+- If you find no red flags, say so. Report only what the text says. If the terms seem \
+to stop partway, say you may not have seen all of them."""
 
 PRETICKED_ONE = "Watch out: the page ticked {box} for you. Untick it if you don't want it."
 PRETICKED_MANY = (

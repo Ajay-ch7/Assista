@@ -89,3 +89,14 @@ test('tricks: pressure to hurry and shaming wording are pointed out', async ({
   expect(speech).toContain('Only 2 left in stock!');
   expect(speech).toContain("No thanks, I don't care about protecting my gear");
 });
+
+test('fine print: the red flags in the terms are spoken first', async ({ context, openPanel }) => {
+  const page = await context.newPage();
+  await page.goto(demoUrl('terms.html'));
+  const panel = await openPanel();
+  const speech = (await ask(panel, 'what is in the fine print?')).join(' ');
+  expect(speech).toMatch(/^I found 6 red flags\./);
+  expect(speech).toContain('It renews automatically');
+  expect(speech).toContain('There are no refunds: All payments are non-refundable.');
+  expect(speech).toContain('Your data is shared');
+});

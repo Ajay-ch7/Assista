@@ -9,7 +9,7 @@ from app.llm.base import StreamEnd, TextDelta
 from app.llm.mock import MockLLM
 from app.main import Deps, model_responder
 from app.protocol import PageSnapshot
-from tests.harness import CHECKOUT_SNAPSHOT, SHOP_SNAPSHOT, session
+from tests.harness import CHECKOUT_SNAPSHOT, SHOP_SNAPSHOT, TERMS_SNAPSHOT, session
 
 
 def session_with(llm: MockLLM):
@@ -141,3 +141,37 @@ def test_pressure_and_shaming_wording_are_pointed_out():
     assert "Only 2 left in stock!" in speech
     assert "No thanks, I don't care about protecting my gear" in speech
     assert "Watch out: the page ticked Add Protection Plan" in speech
+
+
+# Fine print (F15)
+
+
+def test_the_advisor_is_told_to_give_red_flags_first():
+    system = advisor_request("what am I agreeing to?", TERMS_SNAPSHOT).system
+    assert "Give the red flags first, the most costly first" in system
+    for flag in ("automatic renewal", "no refunds", "class action", "personal data"):
+        assert flag in system
+    assert "If you find no red flags, say so" in system
+    assert "stop partway" in system
+
+
+def test_red_flags_in_the_terms_are_spoken_most_costly_first():
+    with session_with(MockLLM()) as client:
+        result = client.ask("summarise the fine print", snapshot=TERMS_SNAPSHOT)
+    speech = " ".join(result.speech)
+    assert speech.startswith("I found 4 red flags.")
+    order = [
+        speech.index("It renews automatically"),
+        speech.index("There are no refunds: All payments are non-refundable."),
+        speech.index("Cancelling is hard: You can cancel only by calling"),
+        speech.index("You give up going to court"),
+    ]
+    assert order == sorted(order)
+    assert "649 rupees" in speech
+
+
+def test_terms_without_red_flags_say_so():
+    plain = {**TERMS_SNAPSHOT, "nodes": [{"ref": "e1", "role": "paragraph", "text": "Be kind."}]}
+    with session_with(MockLLM()) as client:
+        result = client.ask("anything bad in the terms?", snapshot=plain)
+    assert result.speech == ["I found no red flags in the fine print."]

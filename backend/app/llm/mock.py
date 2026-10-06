@@ -46,7 +46,7 @@ _ROUTES = [
     (
         "advisor",
         r"\b(total|cost|fees?|charges?|pay|hidden|tricks?|catch|dark patterns?|terms|"
-        r"fine print)\b",
+        r"fine print|small print|conditions|refunds?|renew\w*)\b",
     ),
 ]
 _FOLLOW_UP = re.compile(r"\b(it|its|it's|they|them|that one|this one|he|she|wearing)\b")
