@@ -14,6 +14,8 @@ export type LocalCommand =
   | { kind: 'faster' }
   | { kind: 'actions' }
   | { kind: 'forget' }
+  | { kind: 'private_on' }
+  | { kind: 'private_off' }
   | { kind: 'verbosity'; level: Verbosity }
   | { kind: 'spell'; text: string | null };
 

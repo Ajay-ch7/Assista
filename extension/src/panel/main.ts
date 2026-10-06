@@ -31,6 +31,7 @@ import { Cues, type CueSound } from './cues';
 import { cancelSay, say } from './localVoice';
 import { readLocalPdf } from './localFile';
 import { Mic } from './mic';
+import { answerOnDevice, onDeviceState, type OnDeviceState } from './onDevice';
 import { Player } from './player';
 import { ReplyRecorder } from './replies';
 import { BackendSocket } from './socket';
@@ -103,6 +104,11 @@ interface HeldAction {
   asked: boolean;
 }
 let held: HeldAction | null = null;
+/** Whether this device has Chrome's built-in model; checked when the panel starts. */
+let onDevice: OnDeviceState = 'unavailable';
+void onDeviceState().then((state) => {
+  onDevice = state;
+});
 /** The user's latest requests, as heard. An action none of them names is held. */
 const heard: string[] = [];
 const HEARD_KEPT = 3;
@@ -157,8 +163,52 @@ function sendSettings(): void {
     type: 'settings',
     turn_id: 'settings',
     verbosity: preferences.verbosity,
-    private_mode: false,
+    private_mode: preferences.privateMode,
   });
+}
+
+/** True when private mode is on and this device can answer by itself. */
+function answersOnDevice(): boolean {
+  return preferences.privateMode && onDevice === 'available';
+}
+
+/**
+ * Private mode with the on-device model: the page is read and the question answered
+ * here, and neither is sent anywhere. `typed` requests have not been logged yet.
+ */
+async function answerPrivately(text: string, typed: boolean): Promise<void> {
+  if (typed) {
+    stopSpeech();
+    log('user', text);
+  }
+  setStatus('Thinking.', 'thinking');
+  cues.startThinking();
+  try {
+    const reply = await chrome.runtime.sendMessage<ToWorker, SnapshotReply>({
+      to: 'worker',
+      kind: 'get_snapshot',
+    });
+    if (!reply.ok) throw new Error(reply.error);
+    const answer = await answerOnDevice(text, reply.snapshot);
+    cues.stopThinking();
+    answerLocally(answer || 'I have no answer for that.');
+  } catch {
+    fail('I could not answer on this device. Say private mode off to use the online model.');
+  }
+}
+
+const PRIVATE_ON_DEVICE =
+  'Private mode is on. I will answer from this device, so the page stays here. I can ' +
+  'only read in private mode, and your voice is still sent for speech recognition.';
+const PRIVATE_ONLINE =
+  'Private mode is on. This device has no built-in model, so I will keep using the ' +
+  'online one, with private fields hidden and without sending pictures of your screen.';
+
+async function setPrivateMode(on: boolean): Promise<void> {
+  preferences = await savePreferences({ privateMode: on });
+  sendSettings();
+  if (!on) answerLocally('Private mode is off.');
+  else answerLocally(onDevice === 'available' ? PRIVATE_ON_DEVICE : PRIVATE_ONLINE);
 }
 
 /** Says something that is not part of a backend reply, at the user's speed. */
@@ -192,6 +242,10 @@ function runLocalCommand(command: LocalCommand): void {
         (entries) => answerLocally(describeActions(entries)),
         () => answerLocally('I could not read my action log.'),
       );
+      break;
+    case 'private_on':
+    case 'private_off':
+      void setPrivateMode(command.kind === 'private_on');
       break;
     case 'forget':
       void forgetSavedDetails().then(
@@ -243,6 +297,10 @@ function sendText(text: string): void {
   if (command) {
     log('user', text);
     runLocalCommand(command);
+    return;
+  }
+  if (answersOnDevice()) {
+    void answerPrivately(text, true);
     return;
   }
   const turn = beginTurn();
@@ -338,6 +396,13 @@ function onBackendMessage(msg: ServerMessage): void {
       if (command) {
         localTurn = true;
         runLocalCommand(command);
+        break;
+      }
+      if (answersOnDevice()) {
+        // The words came from the online recogniser; from here on the turn stays on
+        // the device, and whatever else the backend sends for it is ignored.
+        activeTurn = null;
+        void answerPrivately(msg.text, false);
         break;
       }
       setStatus('Thinking.', 'thinking');
@@ -592,10 +657,11 @@ const holdKey = new HoldKeyMachine(DEFAULT_KEYS, {
 attachHoldKey(window, holdKey);
 watchKeySettings((settings) => holdKey.configure(settings));
 watchPreferences((next) => {
-  const verbosityChanged = next.verbosity !== preferences.verbosity;
+  const changed =
+    next.verbosity !== preferences.verbosity || next.privateMode !== preferences.privateMode;
   preferences = next;
   player.rate = next.speed;
-  if (verbosityChanged) sendSettings();
+  if (changed) sendSettings();
 });
 
 async function askForMicrophoneOnce(): Promise<void> {

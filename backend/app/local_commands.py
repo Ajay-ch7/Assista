@@ -90,6 +90,23 @@ PHRASES: dict[str, tuple[str, ...]] = {
         "delete my saved details",
         "forget what you saved",
     ),
+    "private_on": (
+        "private mode",
+        "private mode on",
+        "turn on private mode",
+        "turn private mode on",
+        "switch on private mode",
+        "start private mode",
+        "go private",
+    ),
+    "private_off": (
+        "private mode off",
+        "turn off private mode",
+        "turn private mode off",
+        "switch off private mode",
+        "stop private mode",
+        "leave private mode",
+    ),
 }
 _ALL = {phrase for phrases in PHRASES.values() for phrase in phrases}
 

@@ -34,7 +34,11 @@ function fakeStorage() {
 describe('normalizePreferences', () => {
   it('fills in defaults', () => {
     expect(normalizePreferences(undefined)).toEqual(DEFAULT_PREFERENCES);
-    expect(normalizePreferences({ verbosity: 'brief' })).toEqual({ verbosity: 'brief', speed: 1 });
+    expect(normalizePreferences({ verbosity: 'brief' })).toEqual({
+      verbosity: 'brief',
+      speed: 1,
+      privateMode: false,
+    });
   });
 
   it('drops values out of range', () => {
@@ -60,12 +64,21 @@ describe('stored preferences', () => {
   it('load defaults when nothing is stored, and save over what is stored', async () => {
     fakeStorage();
     expect(await loadPreferences()).toEqual(DEFAULT_PREFERENCES);
-    expect(await savePreferences({ speed: 1.5 })).toEqual({ verbosity: 'normal', speed: 1.5 });
+    expect(await savePreferences({ speed: 1.5 })).toEqual({
+      verbosity: 'normal',
+      speed: 1.5,
+      privateMode: false,
+    });
     expect(await savePreferences({ verbosity: 'detailed' })).toEqual({
       verbosity: 'detailed',
       speed: 1.5,
+      privateMode: false,
     });
-    expect(await loadPreferences()).toEqual({ verbosity: 'detailed', speed: 1.5 });
+    expect(await loadPreferences()).toEqual({
+      verbosity: 'detailed',
+      speed: 1.5,
+      privateMode: false,
+    });
   });
 
   it('notify watchers now and on every change', async () => {
@@ -74,6 +87,17 @@ describe('stored preferences', () => {
     watchPreferences((preferences) => seen.push(preferences));
     await vi.waitFor(() => expect(seen).toHaveLength(1));
     await savePreferences({ verbosity: 'brief' });
-    expect(seen).toEqual([DEFAULT_PREFERENCES, { verbosity: 'brief', speed: 1 }]);
+    expect(seen).toEqual([
+      DEFAULT_PREFERENCES,
+      { verbosity: 'brief', speed: 1, privateMode: false },
+    ]);
+  });
+});
+
+describe('private mode preference', () => {
+  it('is off unless it was stored as on', () => {
+    expect(normalizePreferences({}).privateMode).toBe(false);
+    expect(normalizePreferences({ privateMode: 'yes' }).privateMode).toBe(false);
+    expect(normalizePreferences({ privateMode: true }).privateMode).toBe(true);
   });
 });

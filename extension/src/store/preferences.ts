@@ -7,9 +7,15 @@ export interface Preferences {
   verbosity: Verbosity;
   /** Playback rate of speech: 1 is normal. */
   speed: number;
+  /** Private mode: no screenshots leave the device, and it answers on the device if it can. */
+  privateMode: boolean;
 }
 
-export const DEFAULT_PREFERENCES: Preferences = { verbosity: 'normal', speed: 1 };
+export const DEFAULT_PREFERENCES: Preferences = {
+  verbosity: 'normal',
+  speed: 1,
+  privateMode: false,
+};
 export const MIN_SPEED = 0.5;
 export const MAX_SPEED = 2;
 export const SPEED_STEP = 0.25;
@@ -29,7 +35,7 @@ export function normalizePreferences(stored: unknown): Preferences {
     typeof value.speed === 'number' && Number.isFinite(value.speed)
       ? clampSpeed(value.speed)
       : DEFAULT_PREFERENCES.speed;
-  return { verbosity, speed };
+  return { verbosity, speed, privateMode: value.privateMode === true };
 }
 
 export function clampSpeed(speed: number): number {
