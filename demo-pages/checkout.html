@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Checkout - Riverside Outfitters</title>
+    <style>
+      body {
+        font:
+          16px/1.5 system-ui,
+          sans-serif;
+        margin: 0;
+        color: #1c1c1c;
+        background: #ffffff;
+      }
+      header,
+      main {
+        max-width: 40rem;
+        margin: 0 auto;
+        padding: 1rem;
+      }
+      table {
+        border-collapse: collapse;
+        margin: 0.5rem 0 1rem;
+      }
+      th,
+      td {
+        padding: 0.25rem 1rem 0.25rem 0;
+        text-align: left;
+      }
+      .total {
+        font-size: 1.4rem;
+        font-weight: 700;
+      }
+      /* The fee is printed, just small and faint: a sighted user can miss it too. */
+      .small-print {
+        font-size: 0.7rem;
+        color: #8a8a8a;
+      }
+      .urgent {
+        color: #b00020;
+        font-weight: 700;
+      }
+      a.button {
+        display: inline-block;
+        padding: 0.5rem 1rem;
+        background: #1d5e3b;
+        color: #ffffff;
+        text-decoration: none;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <a href="shop.html">Riverside Outfitters</a>
+    </header>
+
+    <main>
+      <h1>Checkout</h1>
+      <p class="urgent">Only 2 left in stock! 14 people are looking at this right now.</p>
+
+      <h2>Your order</h2>
+      <table>
+        <caption>
+          Order summary
+        </caption>
+        <tr>
+          <th scope="col">Item</th>
+          <th scope="col">Price</th>
+        </tr>
+        <tr>
+          <td>Trail Backpack 30L</td>
+          <td>4,499 rupees</td>
+        </tr>
+        <tr>
+          <td>Standard delivery</td>
+          <td>99 rupees</td>
+        </tr>
+      </table>
+
+      <p>
+        <label
+          ><input type="checkbox" id="protection" checked /> Add Protection Plan for 299
+          rupees</label
+        >
+      </p>
+      <p>
+        <label><input type="checkbox" id="offers" /> Email me about new arrivals</label>
+      </p>
+
+      <p class="total">Total to pay: <span id="total">4,946 rupees</span></p>
+      <p class="small-print">Prices include a convenience fee of 49 rupees.</p>
+
+      <p>
+        <a class="button" href="form.html">Continue to delivery</a>
+        <a href="shop.html">No thanks, I don't care about protecting my gear</a>
+      </p>
+    </main>
+
+    <script>
+      // Unticking the plan takes it off the total, as a real shop would.
+      const ITEMS = 4499 + 99;
+      const FEE = 49;
+      const PLAN = 299;
+      const protection = document.getElementById('protection');
+      protection.addEventListener('change', () => {
+        const total = ITEMS + FEE + (protection.checked ? PLAN : 0);
+        document.getElementById('total').textContent = `${total.toLocaleString('en-IN')} rupees`;
+      });
+    </script>
+  </body>
+</html>

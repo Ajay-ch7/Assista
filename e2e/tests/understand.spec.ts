@@ -35,6 +35,9 @@ const SITES = [
   ['news.html', 'This page is titled River levels rise after record rain - The Valley Gazette.'],
   ['library.html', 'This page is titled Opening hours - Lakeside Public Library.'],
   ['booking.html', 'This page is titled Book a table - Saffron Kitchen.'],
+  ['checkout.html', 'This page is titled Checkout - Riverside Outfitters.'],
+  ['terms.html', 'This page is titled Terms of membership - StreamBox.'],
+  ['instructions.html', 'This page is titled Best rain jackets of 2026 - Gear Notes.'],
 ] as const;
 
 for (const [site, first] of SITES) {

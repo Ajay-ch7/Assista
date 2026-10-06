@@ -31,6 +31,9 @@
         We hold tables for 15 minutes. For groups larger than eight, please call
         us.
       </p>
+      <p id="hold">
+        We are holding your table. Time left: <span role="timer" id="timer">5:00</span>
+      </p>
       <form action="#booked">
         <label for="name">Your name</label>
         <input id="name" name="name" autocomplete="name" required />
@@ -63,5 +66,21 @@
         <button type="submit">Book table</button>
       </form>
     </main>
+
+    <script>
+      // The hold runs out after five minutes, like a real booking session.
+      let left = 300;
+      const timer = document.getElementById('timer');
+      const tick = setInterval(() => {
+        left -= 1;
+        if (left <= 0) {
+          clearInterval(tick);
+          document.getElementById('hold').textContent =
+            'Your session has expired. Please start again.';
+          return;
+        }
+        timer.textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+      }, 1000);
+    </script>
   </body>
 </html>
