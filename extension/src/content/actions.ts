@@ -38,6 +38,8 @@ export function runAction(
         return type(target(tool), tool.args.text);
       case 'select':
         return select(target(tool), tool.args.option);
+      case 'focus':
+        return focus(target(tool));
       case 'scroll':
         return scroll(tool, doc);
       case 'go_back':
@@ -148,6 +150,20 @@ function scroll(tool: ToolRequest, doc: Document): ActionReply {
   if (view.scrollY + view.innerHeight >= height - 2) detail = 'bottom of the page';
   else if (view.scrollY <= 0) detail = 'top of the page';
   return done({ action: 'scroll', detail });
+}
+
+/** Moves keyboard focus to an element without pressing or typing anything. */
+function focus(el: Element): ActionReply {
+  const described = describeElement(el);
+  if (isTextField(el) && isSensitiveField(el, described.name)) {
+    return focusPrivately(el, described.name);
+  }
+  // Headings and plain text take focus only once they have a tabindex.
+  if ((el as HTMLElement).tabIndex < 0 && !el.hasAttribute('tabindex')) {
+    el.setAttribute('tabindex', '-1');
+  }
+  reveal(el);
+  return done({ action: 'focus', target: described });
 }
 
 /** Moves focus to a sensitive field and reports that the user must type it. */

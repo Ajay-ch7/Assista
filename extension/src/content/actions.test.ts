@@ -258,6 +258,34 @@ describe('scroll and back', () => {
   });
 });
 
+describe('focus', () => {
+  it('moves focus to a field without typing or pressing anything', () => {
+    page('<label>Search <input id="q" type="search"></label>');
+    expect(run('focus', 'Search')).toEqual({
+      ok: true,
+      result: { action: 'focus', target: { role: 'searchbox', name: 'Search' } },
+    });
+    expect(document.activeElement?.id).toBe('q');
+    expect((document.getElementById('q') as HTMLInputElement).value).toBe('');
+  });
+
+  it('can move focus to a heading', () => {
+    page('<h2 id="h">Reviews</h2>');
+    expect(run('focus', 'Reviews')).toMatchObject({ ok: true });
+    expect(document.activeElement?.id).toBe('h');
+  });
+
+  it('hands a private field to the user', () => {
+    page('<label>Password <input id="p" type="password"></label>');
+    expect(run('focus', 'Password')).toEqual({
+      ok: false,
+      error: 'sensitive_field',
+      sensitive: { field: 'Password' },
+    });
+    expect(document.activeElement?.id).toBe('p');
+  });
+});
+
 describe('references', () => {
   it('rejects a reference from an older snapshot', () => {
     page('<button>Buy</button>');
