@@ -1,6 +1,7 @@
 // Action tools that run in the page: click, type, select, scroll and back. Each acts on a
 // reference id from the latest snapshot, and a reference from an older snapshot is refused.
 
+import { gateCheck } from '../safety/gate';
 import { isSensitiveField } from '../safety/redaction';
 import type { ActionDone, ActionReply, ToolRequest } from '../shared/messages';
 import { StaleRefError, describeElement, resolveRef } from './snapshot';
@@ -32,7 +33,7 @@ export function runAction(
   try {
     switch (tool.name) {
       case 'click':
-        return click(target(tool), defer);
+        return click(target(tool), tool, defer);
       case 'type':
         return type(target(tool), tool.args.text);
       case 'select':
@@ -65,11 +66,18 @@ function target(tool: ToolRequest): Element {
   return resolveRef(tool.snapshotId, tool.ref);
 }
 
-function click(el: Element, defer: Defer): ActionReply {
+function click(el: Element, tool: ToolRequest, defer: Defer): ActionReply {
   const described = describeElement(el);
   if (isDisabled(el)) return failed('disabled');
   if (isTextField(el) && isSensitiveField(el, described.name)) {
     return focusPrivately(el, described.name);
+  }
+  const hold = gateCheck(el, described.name);
+  if (hold) {
+    if (!tool.confirmed) return { ok: false, error: 'held_by_gate', held: hold };
+    // The user agreed to what was read back. If the control now reads differently, the
+    // page changed it in the meantime, and the agreement no longer covers it.
+    if (tool.confirmed.control !== hold.control) return failed('changed_since_confirmation');
   }
   reveal(el);
   defer(() => (el as HTMLElement).click());

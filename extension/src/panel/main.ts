@@ -11,6 +11,7 @@ import {
   type ToWorker,
   type ToolRequest,
 } from '../shared/messages';
+import { parseConfirmation } from '../shared/confirmation';
 import { parseLocalCommand, type LocalCommand } from '../shared/localCommands';
 import type { AudioFormat, ServerMessage, ToolCallMessage, Verbosity } from '../shared/protocol';
 import {
@@ -87,6 +88,17 @@ let muted = false;
 let recordingAudio = false;
 /** True when the active turn was a local command, which has its own spoken reply. */
 let localTurn = false;
+
+/** An action the confirmation gate is holding until the user says yes. */
+interface HeldAction {
+  id: string;
+  callId: string;
+  tool: ToolRequest;
+  control: string;
+  /** True once the backend has read the action back and asked the user. */
+  asked: boolean;
+}
+let held: HeldAction | null = null;
 
 function setStatus(text: string, turn: TurnState): void {
   statusEl.textContent = text;
@@ -295,8 +307,16 @@ function onBackendMessage(msg: ServerMessage): void {
       if (command) {
         localTurn = true;
         runLocalCommand(command);
-      } else {
-        setStatus('Thinking.', 'thinking');
+        break;
+      }
+      setStatus('Thinking.', 'thinking');
+      // Anything but a local command settles a held action: a clear yes runs it, a clear
+      // no or any other request drops it.
+      const waiting = held;
+      held = null;
+      if (waiting?.asked) {
+        const answer = parseConfirmation(msg.text);
+        if (answer !== null) void answerConfirmation(msg.turn_id, waiting, answer);
       }
       break;
     }
@@ -333,8 +353,9 @@ function onBackendMessage(msg: ServerMessage): void {
     case 'tool_call':
       void runToolCall(msg);
       break;
-    default:
-      console.warn(`Assista: ${msg.type} is not handled yet`);
+    case 'confirm_request':
+      if (held && msg.confirm_id === held.id) held.asked = true;
+      break;
   }
 }
 
@@ -402,27 +423,51 @@ async function runToolCall(call: ToolCallMessage): Promise<void> {
     ref: call.ref,
     args: call.args ?? {},
   };
+  held = null;
   const reply = await runTool(tool);
+  if (!reply.ok && reply.held) {
+    held = {
+      id: `h${Date.now().toString(36)}-${call.call_id}`,
+      callId: call.call_id,
+      tool,
+      control: reply.held.control,
+      asked: false,
+    };
+  }
+  sendToolResult(call.turn_id, call.call_id, tool, reply);
+}
+
+/** Tells the backend the user's answer; on yes, runs the held action and reports it. */
+async function answerConfirmation(
+  turn: string,
+  action: HeldAction,
+  approved: boolean,
+): Promise<void> {
+  socket.send({ type: 'confirm', turn_id: turn, confirm_id: action.id, approved });
+  if (!approved) return;
+  const tool: ToolRequest = { ...action.tool, confirmed: { control: action.control } };
+  sendToolResult(turn, action.callId, tool, await runTool(tool));
+}
+
+function sendToolResult(turn: string, callId: string, tool: ToolRequest, reply: ActionReply): void {
   if (reply.ok && tool.name === 'click' && reply.result.target?.role === 'link') {
     void cues.play('link');
   }
-  sendToolResult(call.turn_id, call.call_id, reply);
-}
-
-function sendToolResult(turn: string, callId: string, reply: ActionReply): void {
   if (turn !== activeTurn) return;
-  socket.send(
-    reply.ok
-      ? { type: 'tool_result', turn_id: turn, call_id: callId, ok: true, result: reply.result }
-      : {
-          type: 'tool_result',
-          turn_id: turn,
-          call_id: callId,
-          ok: false,
-          error: reply.error,
-          result: reply.sensitive,
-        },
-  );
+  const base = { type: 'tool_result', turn_id: turn, call_id: callId } as const;
+  if (reply.ok) {
+    socket.send({ ...base, ok: true, result: reply.result });
+  } else if (reply.held && held?.callId === callId) {
+    socket.send({
+      ...base,
+      ok: false,
+      held_by_gate: true,
+      error: reply.error,
+      result: { confirm_id: held.id, ...reply.held },
+    });
+  } else {
+    socket.send({ ...base, ok: false, error: reply.error, result: reply.sensitive });
+  }
 }
 
 formEl.addEventListener('submit', (event) => {

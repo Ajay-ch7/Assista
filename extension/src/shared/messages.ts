@@ -1,6 +1,7 @@
 // Messages between the panel, the service worker and content scripts (chrome.runtime).
 // Each message names its recipient in `to`; every listener ignores what is not addressed to it.
 
+import type { GateHold } from '../safety/gate';
 import type { PageSnapshot } from './snapshot';
 
 export type TalkPhase = 'down' | 'up' | 'cancel';
@@ -52,6 +53,11 @@ export interface ToolRequest {
   snapshotId: string;
   ref?: string;
   args: Record<string, unknown>;
+  /**
+   * Releases an action the confirmation gate held. Only the panel sets this, and only
+   * after the user said yes; it names the control the user heard read back.
+   */
+  confirmed?: { control: string };
 }
 
 /** What an action did, for the model's next step and for the action log. */
@@ -67,6 +73,8 @@ export type ActionReply =
   | {
       ok: false;
       error: string;
+      /** The confirmation gate held the action; nothing was done. */
+      held?: GateHold;
       /** The field is sensitive: focus was moved to it, and the user must type it. */
       sensitive?: { field: string };
     };

@@ -76,6 +76,75 @@ describe('click', () => {
   });
 });
 
+describe('click: confirmation gate', () => {
+  function tool(name: string, confirmed?: { control: string }): ToolRequest {
+    return {
+      name: 'click',
+      snapshotId: snapshot.snapshot_id,
+      ref: refOf(name),
+      args: {},
+      confirmed,
+    };
+  }
+
+  it('holds a risky control and does nothing', () => {
+    page('<button id="b" type="button">Place order</button>');
+    const clicked = vi.fn();
+    document.getElementById('b')!.addEventListener('click', clicked);
+    expect(run('click', 'Place order')).toEqual({
+      ok: false,
+      error: 'held_by_gate',
+      held: { control: 'Place order', reason: 'risky_control' },
+    });
+    expect(clicked).not.toHaveBeenCalled();
+  });
+
+  it('holds a form submission', () => {
+    page('<form><label>Name <input></label><button id="b">Continue</button></form>');
+    const submitted = vi.fn((event: Event) => event.preventDefault());
+    document.querySelector('form')!.addEventListener('submit', submitted);
+    expect(run('click', 'Continue')).toMatchObject({
+      error: 'held_by_gate',
+      held: { control: 'Continue', reason: 'form_submit' },
+    });
+    expect(submitted).not.toHaveBeenCalled();
+  });
+
+  it('ignores anything the backend puts in the arguments', () => {
+    page('<button id="b" type="button">Pay now</button>');
+    const clicked = vi.fn();
+    document.getElementById('b')!.addEventListener('click', clicked);
+    const reply = run('click', 'Pay now', { confirmed: true, force: true, control: 'Pay now' });
+    expect(reply).toMatchObject({ ok: false, error: 'held_by_gate' });
+    expect(clicked).not.toHaveBeenCalled();
+  });
+
+  it('runs a held action once the user has confirmed it', () => {
+    page('<button id="b" type="button">Place order</button>');
+    const clicked = vi.fn();
+    document.getElementById('b')!.addEventListener('click', clicked);
+    const reply = runAction(tool('Place order', { control: 'Place order' }), document, (work) =>
+      work(),
+    );
+    expect(reply).toMatchObject({ ok: true, result: { action: 'click' } });
+    expect(clicked).toHaveBeenCalledOnce();
+  });
+
+  it('refuses when the control changed after the user heard it read back', () => {
+    page('<button id="b" type="button">Send feedback</button>');
+    const clicked = vi.fn();
+    const button = document.getElementById('b')!;
+    button.addEventListener('click', clicked);
+    const request = tool('Send feedback', { control: 'Send feedback' });
+    button.textContent = 'Send 5,000 rupees';
+    expect(runAction(request, document, (work) => work())).toEqual({
+      ok: false,
+      error: 'changed_since_confirmation',
+    });
+    expect(clicked).not.toHaveBeenCalled();
+  });
+});
+
 describe('type', () => {
   it('fills a field and fires the events a typing user would', () => {
     page('<label>Full name <input id="n"></label>');
