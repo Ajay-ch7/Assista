@@ -185,6 +185,20 @@ describe('buildSnapshot: form fields', () => {
   });
 });
 
+describe('buildSnapshot: private fields', () => {
+  it('says whether a sensitive field is filled, without its value', () => {
+    const snapshot = snapshotOf(`
+      <label>Password <input type="password" value="hunter2-secret"></label>
+      <label>One-time code <input autocomplete="one-time-code"></label>
+      <label>Name <input value="Asha"></label>`);
+    const [password, code, name] = byRole(snapshot, 'textbox');
+    expect(password).toMatchObject({ sensitive: true, value: null, state: { filled: true } });
+    expect(code).toMatchObject({ sensitive: true, value: null, state: { filled: false } });
+    expect(name.state).not.toHaveProperty('filled');
+    expect(JSON.stringify(snapshot)).not.toContain('hunter2');
+  });
+});
+
 describe('buildSnapshot: tables and images', () => {
   it('reports data tables with their caption and rows', () => {
     const snapshot = snapshotOf(`

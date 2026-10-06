@@ -1,7 +1,8 @@
 // Writes the sound cues to public/cues as small mono WAV files. Run with
 // `node scripts/make-cues.mjs` after changing a cue; the output is committed.
 // Each cue is short and distinct in pitch and rhythm, so it can be told apart without
-// looking: listening rises, done falls, error drops low, alert repeats.
+// looking: listening rises, done falls, error drops low, alert repeats, private is two
+// soft low notes.
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -73,6 +74,7 @@ const CUES = {
     silence(0.05),
     tone(1000, 0.08, 0.35),
   ),
+  private: join(tone(392, 0.1, 0.22), silence(0.04), tone(392, 0.1, 0.22)),
 };
 
 mkdirSync(OUT, { recursive: true });

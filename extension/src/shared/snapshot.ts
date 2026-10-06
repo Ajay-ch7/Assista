@@ -7,6 +7,8 @@ export interface NodeState {
   required?: boolean;
   /** Heading level, 1 to 6. */
   level?: number;
+  /** On sensitive fields only: whether something has been typed. The value is never sent. */
+  filled?: boolean;
 }
 
 export interface SnapshotNode {

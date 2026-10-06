@@ -453,6 +453,8 @@ function sendToolResult(turn: string, callId: string, tool: ToolRequest, reply: 
   if (reply.ok && tool.name === 'click' && reply.result.target?.role === 'link') {
     void cues.play('link');
   }
+  // Private mode: focus is now on a field the user must type themselves.
+  if (!reply.ok && reply.sensitive) void cues.play('private');
   if (turn !== activeTurn) return;
   const base = { type: 'tool_result', turn_id: turn, call_id: callId } as const;
   if (reply.ok) {

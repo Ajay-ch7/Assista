@@ -432,6 +432,7 @@ function addControl(el: Element, role: string, build: Build): void {
     if (isSensitiveField(el, name)) {
       node.sensitive = true;
       node.value = null;
+      node.state = { ...node.state, filled: fieldValue(el, build) !== '' };
     } else {
       node.value = clip(fieldValue(el, build), MAX_VALUE);
     }
