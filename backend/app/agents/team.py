@@ -6,6 +6,7 @@ import logging
 from collections.abc import AsyncIterator
 
 from app.agents.actor import Actor
+from app.agents.advisor import Advisor
 from app.agents.base import (
     ConfidenceFilter,
     Specialist,
@@ -42,8 +43,7 @@ class Team:
         self.page_vision = PageVision(llm, model)
         self.specialists: dict[SpecialistName, Specialist] = {
             "reader": reader,
-            # Costs, fees and fine print are read from the page until the Advisor exists.
-            "advisor": reader,
+            "advisor": Advisor(llm, model),
             "vision": Vision(llm, model),
             "actor": Actor(llm, model),
             "watcher": NotYet("watcher", "I can't watch pages for changes yet."),

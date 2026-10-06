@@ -27,8 +27,8 @@ charts, graphs, diagrams, layout, or what is on the screen. Also follow-up quest
 about an image or picture that was just described.
 - actor: doing something on the page or in the browser: click, press, follow a link, \
 type, fill in a form, choose an option, scroll, go back, open a site, switch tabs.
-- advisor: money and risk: the total cost, fees, hidden charges, whether a deal is fair, \
-tricks or dark patterns, fine print and terms.
+- advisor: money and risk: the total cost and what the user will pay, fees, hidden \
+charges, whether a deal is fair, tricks or dark patterns, fine print and terms.
 - watcher: watching a page and telling the user later when something changes, such as a \
 price drop or a seat opening.
 

@@ -80,6 +80,56 @@ FORM_SNAPSHOT: dict[str, Any] = {
     ],
 }
 
+CHECKOUT_SNAPSHOT: dict[str, Any] = {
+    "url": "http://127.0.0.1:8787/checkout.html",
+    "title": "Checkout - Riverside Outfitters",
+    "snapshot_id": "checkout-1",
+    "nodes": [
+        {"ref": "e1", "role": "banner", "name": ""},
+        {"ref": "e2", "role": "link", "name": "Riverside Outfitters"},
+        {"ref": "e3", "role": "main", "name": ""},
+        {"ref": "e4", "role": "heading", "name": "Checkout", "state": {"level": 1}},
+        {
+            "ref": "e5",
+            "role": "paragraph",
+            "text": "Only 2 left in stock! 14 people are looking at this right now.",
+        },
+        {"ref": "e6", "role": "heading", "name": "Your order", "state": {"level": 2}},
+        {
+            "ref": "e7",
+            "role": "checkbox",
+            "name": "Add Protection Plan for 299 rupees",
+            "state": {"checked": True},
+        },
+        {
+            "ref": "e8",
+            "role": "checkbox",
+            "name": "Email me about new arrivals",
+            "state": {"checked": False},
+        },
+        {"ref": "e9", "role": "paragraph", "text": "Total to pay: 4,946 rupees"},
+        {
+            "ref": "e10",
+            "role": "paragraph",
+            "text": "Prices include a convenience fee of 49 rupees.",
+        },
+        {"ref": "e11", "role": "link", "name": "Continue to delivery"},
+        {"ref": "e12", "role": "link", "name": "No thanks, I don't care about protecting my gear"},
+    ],
+    "tables": [
+        {
+            "ref": "t1",
+            "caption": "Order summary",
+            "rows": [
+                ["Item", "Price"],
+                ["Trail Backpack 30L", "4,499 rupees"],
+                ["Standard delivery", "99 rupees"],
+            ],
+        }
+    ],
+    "rules": {"preticked": ["e7"], "countdowns": []},
+}
+
 _GATED = re.compile(r"\b(pay|buy|place order|submit|confirm|delete|send)\b", re.IGNORECASE)
 
 

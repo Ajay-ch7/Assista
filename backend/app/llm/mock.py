@@ -18,6 +18,7 @@ from app.llm.base import (
     ToolCallRequest,
 )
 from app.llm.mock_actor import act
+from app.llm.mock_advisor import advise
 
 _PAGE_DATA = re.compile(r"<page_data_\w+>\n(.*)\n</page_data_\w+>", re.DOTALL)
 # Vision's system prompts contain this role line (app/agents/vision.py). See _look.
@@ -25,6 +26,8 @@ _VISION_ROLE = "\nYou are Vision."
 
 # The Actor's system prompts contain this role line (app/agents/actor.py).
 _ACTOR_ROLE = "\nYou are the Actor."
+# And the Advisor's this one (app/agents/advisor.py).
+_ADVISOR_ROLE = "\nYou are the Advisor."
 
 # Router requests open with this (app/agents/router.py). The mock routes them by keyword.
 _ROUTER_SYSTEM = "You route requests"
@@ -40,7 +43,7 @@ _ROUTES = [
         r"\b(click|press|tap|type|enter|fill|select|choose|tick|untick|scroll|go back|"
         r"go to|open|switch|submit|add .+ to (the )?cart|place .*order|sign in|log in)\b",
     ),
-    ("advisor", r"\b(total|cost|fees?|charges?|hidden|trick|terms|fine print)\b"),
+    ("advisor", r"\b(total|cost|fees?|charges?|pay|hidden|trick|terms|fine print)\b"),
 ]
 _FOLLOW_UP = re.compile(r"\b(it|its|it's|they|them|that one|this one|he|she|wearing)\b")
 
@@ -66,6 +69,10 @@ class MockLLM(LLMClient):
             return
         if _ACTOR_ROLE in request.system:
             for event in act(request):
+                yield event
+            return
+        if _ADVISOR_ROLE in request.system:
+            for event in advise(request):
                 yield event
             return
         if _VISION_ROLE in request.system:

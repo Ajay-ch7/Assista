@@ -116,12 +116,12 @@ def test_specialists_from_later_phases_say_what_is_not_possible_yet(text, reply)
     assert llm.specialist_requests == []
 
 
-def test_cost_questions_are_read_from_the_page_until_the_advisor_exists():
+def test_cost_questions_go_to_the_advisor():
     llm = MockLLM()
     with session_with(llm) as client:
-        result = client.ask("what is the total cost?")
-    assert result.speech == ["The page doesn't say anything about total cost."]
-    assert len(llm.specialist_requests) == 1
+        client.ask("what is the total cost?")
+    (request,) = llm.specialist_requests
+    assert "You are the Advisor." in request.system
 
 
 def test_earlier_exchanges_reach_the_specialist():
