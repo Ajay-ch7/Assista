@@ -123,3 +123,35 @@ def test_web_pages_cannot_open_a_session():
                 pass
         with client.websocket_connect("/ws", headers={"origin": "chrome-extension://abcdef"}):
             pass
+
+
+class ServiceError(Exception):
+    """Shaped like a model provider's error: a status code and the provider's wording."""
+
+    def __init__(self, code: int, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+@pytest.mark.parametrize(
+    ("error", "code", "words"),
+    [
+        (ServiceError(429, "RESOURCE_EXHAUSTED: quota exceeded"), "model_quota", "limit for now"),
+        (ServiceError(503, "UNAVAILABLE: high demand"), "model_busy", "busy right now"),
+        (TimeoutError("read timed out"), "model_slow", "took too long"),
+        (ConnectionError("no route to host"), "no_network", "check the connection"),
+        (RuntimeError("boom"), "internal", "Something went wrong on my side"),
+    ],
+)
+def test_every_failure_of_the_model_service_is_put_into_words(error, code, words):
+    async def respond(ctx: TurnContext):
+        raise error
+        yield ""
+
+    with session(respond=respond) as client:
+        result = client.ask("what is this page?")
+    assert result.error["code"] == code
+    assert words in result.error["message"]
+    # The provider's own wording is never read out.
+    assert "RESOURCE_EXHAUSTED" not in result.error["message"]
+    assert "boom" not in result.error["message"]

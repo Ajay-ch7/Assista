@@ -117,6 +117,10 @@ class DeepgramSpeechStream(SpeechStream):
         self._url = url
         self._headers = headers
         self._connecting: asyncio.Task[ClientConnection] | None = None
+        # True while a sentence's audio is still coming. If it was cut off, for example
+        # because the user started a new turn, what is left on the connection belongs to
+        # the old sentence, and the connection cannot be used again.
+        self._mid_sentence = False
 
     async def _connect(self) -> ClientConnection:
         return await connect(
@@ -132,6 +136,9 @@ class DeepgramSpeechStream(SpeechStream):
         await self._connection()
 
     async def synthesize(self, text: str) -> AsyncIterator[bytes]:
+        if self._mid_sentence:
+            await self.close()
+        self._mid_sentence = True
         ws = await self._connection()
         await ws.send(json.dumps({"type": "Speak", "text": text}))
         # Flush asks for the audio of everything sent so far; "Flushed" marks its end.
@@ -143,6 +150,7 @@ class DeepgramSpeechStream(SpeechStream):
             msg = json.loads(raw)
             kind = msg.get("type")
             if kind == "Flushed":
+                self._mid_sentence = False
                 return
             if kind == "Error":
                 raise RuntimeError(f"Deepgram text-to-speech error: {msg}")
@@ -152,6 +160,7 @@ class DeepgramSpeechStream(SpeechStream):
 
     async def close(self) -> None:
         connecting, self._connecting = self._connecting, None
+        self._mid_sentence = False
         if connecting is None:
             return
         if not connecting.done():

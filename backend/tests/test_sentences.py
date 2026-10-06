@@ -44,3 +44,31 @@ def test_line_breaks_end_sentences():
 
 def test_empty_input_gives_nothing():
     assert split("", "   ", "\n") == []
+
+
+def test_early_start_cuts_a_long_opening_sentence_at_a_clause():
+    splitter = SentenceSplitter(early_start=True)
+    first = splitter.feed("The page shows a green backpack for hiking and travel, priced at ")
+    assert first == ["The page shows a green backpack for hiking and travel,"]
+    rest = splitter.feed("4,499 rupees, and it is in stock. Shall I go on?") + splitter.flush()
+    assert rest == ["priced at 4,499 rupees, and it is in stock.", "Shall I go on?"]
+
+
+def test_early_start_leaves_short_openings_and_numbers_alone():
+    splitter = SentenceSplitter(early_start=True)
+    assert splitter.feed("Yes, it is in stock at 4,499 rupees, as the page ") == []
+    assert splitter.feed("says. Next.") + splitter.flush() == [
+        "Yes, it is in stock at 4,499 rupees, as the page says.",
+        "Next.",
+    ]
+
+
+def test_early_start_applies_to_the_first_sentence_only():
+    splitter = SentenceSplitter(early_start=True)
+    out = splitter.feed("Done. ")
+    out += splitter.feed("The second sentence is long enough to be cut somewhere, but it is ")
+    out += splitter.feed("not the first. ")
+    assert out == [
+        "Done.",
+        "The second sentence is long enough to be cut somewhere, but it is not the first.",
+    ]

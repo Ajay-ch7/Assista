@@ -28,7 +28,7 @@ import { describeActions, entryFor, loadActions, logAction } from '../store/acti
 import { forgetSavedDetails, saveDetail } from '../store/savedDetails';
 import { watchKeySettings } from '../store/settings';
 import { Cues, type CueSound } from './cues';
-import { cancelSay, say } from './localVoice';
+import { cancelSay, say, sayNext } from './localVoice';
 import { readLocalPdf } from './localFile';
 import { Mic } from './mic';
 import { answerOnDevice, onDeviceState, type OnDeviceState } from './onDevice';
@@ -68,6 +68,14 @@ const socket = new BackendSocket(backendUrl, {
   onAudio: onBackendAudio,
   onState: (open) => {
     statusEl.dataset.connection = open ? 'open' : 'closed';
+    // A turn cut off by a lost connection is said aloud; otherwise it would just go quiet.
+    const waiting = ['listening', 'thinking', 'speaking'].includes(statusEl.dataset.turn ?? '');
+    if (!open && waiting) {
+      activeTurn = listeningTurn = streamingTurn = null;
+      mic.stop();
+      fail('I lost the connection to the Assista server. Please try again in a moment.');
+      return;
+    }
     setStatus(open ? 'Ready.' : 'Not connected to the Assista server.', 'idle');
     if (open) sendSettings();
   },
@@ -93,6 +101,8 @@ let muted = false;
 let recordingAudio = false;
 /** True when the active turn was a local command, which has its own spoken reply. */
 let localTurn = false;
+/** The reply sentence last received, to recognise one that is sent again. */
+let lastSentence: { turn: string; seq: number } | null = null;
 
 /** An action the confirmation gate is holding until the user says yes. */
 interface HeldAction {
@@ -427,15 +437,23 @@ function onBackendMessage(msg: ServerMessage): void {
     case 'request_document':
       void replyWithDocument(msg.turn_id);
       break;
-    case 'speak_text':
+    case 'speak_text': {
       cues.stopThinking();
-      log('assistant', msg.text);
-      replies.sentence(msg.turn_id, msg.text, msg.audio ?? null);
+      // The same sentence sent again without audio: the backend's voice failed on it.
+      const again = lastSentence?.turn === msg.turn_id && lastSentence.seq === msg.seq;
+      lastSentence = { turn: msg.turn_id, seq: msg.seq };
+      if (!again) {
+        log('assistant', msg.text);
+        replies.sentence(msg.turn_id, msg.text, msg.audio ?? null);
+      }
       recordingAudio = Boolean(msg.audio);
       player.startSentence();
       incomingAudio = muted ? null : (msg.audio ?? null);
+      // Every reply is heard: a sentence without audio is spoken by the browser's voice.
+      if (!msg.audio && !muted) sayNext(msg.text, preferences.speed);
       setStatus('Speaking.', 'speaking');
       break;
+    }
     case 'done':
       cues.stopThinking();
       if (!localTurn) void cues.play('done', true);

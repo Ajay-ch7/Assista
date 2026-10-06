@@ -81,19 +81,105 @@ def test_speech_to_text_failure_ends_in_a_spoken_error():
     assert "provider down" not in result.error["message"]
 
 
-def test_text_to_speech_failure_ends_in_a_spoken_error():
-    class Broken(TextToSpeech):
-        @property
-        def output_format(self) -> AudioFormat:
-            return AudioFormat(sample_rate=24000)
+class BrokenVoice(TextToSpeech):
+    """A voice that is down: every sentence fails before any audio."""
 
-        async def synthesize(self, text: str) -> AsyncIterator[bytes]:
-            raise RuntimeError("provider down")
-            yield b""
+    @property
+    def output_format(self) -> AudioFormat:
+        return AudioFormat(sample_rate=24000)
 
-    with session(stt=MockSpeechToText(), tts=Broken()) as client:
-        result = client.say(b"hello")
-    assert result.error["code"] == "tts_failed"
+    async def synthesize(self, text: str) -> AsyncIterator[bytes]:
+        raise RuntimeError("provider down")
+        yield b""
+
+
+def test_when_the_voice_fails_the_answer_still_arrives_as_text_to_be_spoken_locally():
+    """P5.7: the browser's own voice is the fallback, so the turn must not end in an error."""
+    with session(stt=MockSpeechToText(), tts=BrokenVoice()) as client:
+        result = client.say(b"what is this page?")
+    assert result.error is None
+    assert result.types[-1] == "done"
+    assert result.audio == []
+    spoken = result.of_type("speak_text")
+    # The first sentence was tried with audio (twice: the connection might have been
+    # stale), then sent again without; the rest went out as text straight away.
+    assert [(m["seq"], "audio" in m) for m in spoken] == [
+        (0, True),
+        (0, True),
+        (0, False),
+        (1, False),
+        (2, False),
+    ]
+    assert spoken[2]["text"] == spoken[0]["text"]
+
+
+class FlakyVoice(TextToSpeech):
+    """A voice whose first connection has gone stale: it fails once, then works."""
+
+    def __init__(self) -> None:
+        self.streams = 0
+        self.failed = False
+
+    @property
+    def output_format(self) -> AudioFormat:
+        return AudioFormat(sample_rate=16000)
+
+    def open_stream(self):
+        self.streams += 1
+        return super().open_stream()
+
+    async def synthesize(self, text: str) -> AsyncIterator[bytes]:
+        if not self.failed:
+            self.failed = True
+            raise ConnectionError("connection closed")
+        yield b"\x00\x00" * 100
+
+
+def test_a_stale_voice_connection_is_reopened_and_the_sentence_spoken():
+    voice = FlakyVoice()
+    with session(stt=MockSpeechToText(), tts=voice) as client:
+        result = client.say(b"what is this page?")
+    assert result.error is None
+    assert voice.streams == 2
+    assert len(result.audio) == 3
+    # After the retry every sentence carried audio; none fell back to text.
+    assert all("audio" in m for m in result.of_type("speak_text"))
+
+
+def test_the_voice_connection_is_kept_between_turns():
+    class Counting(MockTextToSpeech):
+        opened = 0
+
+        def open_stream(self):
+            Counting.opened += 1
+            return super().open_stream()
+
+    with session(stt=MockSpeechToText(), tts=Counting()) as client:
+        client.say(b"what is this page?")
+        client.say(b"what is this page?")
+    assert Counting.opened == 1
+
+
+def test_a_spoken_reply_starts_at_the_first_clause():
+    async def respond(ctx):
+        yield "This is the checkout page of Riverside Outfitters, where one backpack "
+        yield "is waiting, and the total is 4,946 rupees. You can continue to delivery."
+
+    with session(stt=MockSpeechToText(), tts=MockTextToSpeech(), respond=respond) as client:
+        spoken = client.say(b"where am I?")
+    with session(respond=respond) as client:
+        typed = client.ask("where am I?")
+    assert spoken.speech == [
+        "This is the checkout page of Riverside Outfitters,",
+        "where one backpack is waiting, and the total is 4,946 rupees.",
+        "You can continue to delivery.",
+    ]
+    # A typed turn keeps whole sentences.
+    assert typed.speech == [
+        "This is the checkout page of Riverside Outfitters, where one backpack is waiting, "
+        "and the total is 4,946 rupees.",
+        "You can continue to delivery.",
+    ]
 
 
 def test_a_new_turn_replaces_the_one_in_progress():

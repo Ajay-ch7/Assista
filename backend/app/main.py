@@ -162,6 +162,9 @@ class Session:
         self._pending: dict[tuple[str, str], asyncio.Future[Any]] = {}
         # Replies that arrived before the turn started waiting for them.
         self._early: dict[tuple[str, str], Any] = {}
+        # The voice connection, kept open between spoken turns: opening one costs a
+        # second or more, which the user would hear as silence.
+        self._speech: SpeechStream | None = None
 
     async def run(self) -> None:
         try:
@@ -176,6 +179,8 @@ class Session:
                     await self._on_text(text)
         finally:
             self._cancel_turn()
+            if self._speech is not None:
+                await self._speech.close()
 
     # Incoming messages
 
@@ -245,19 +250,20 @@ class Session:
             await self._send_error(
                 turn_id, "not_configured", "The Assista server is not fully set up yet."
             )
-        except Exception:
+        except Exception as error:
             log.exception("turn %s failed", turn_id)
-            await self._send_error(
-                turn_id, "internal", "Something went wrong on my side. Please try again."
-            )
+            code, message = _explain(error)
+            await self._send_error(turn_id, code, message)
 
     async def _spoken_turn(
         self, turn_id: str, fmt: AudioFormat, queue: asyncio.Queue[bytes | None]
     ) -> None:
         stt = self.deps.speech_to_text()
-        speech = self.deps.text_to_speech().open_stream()
+        if self._speech is None:
+            self._speech = self.deps.text_to_speech().open_stream()
+        speech = self._speech
         # Get the voice ready while the user is still talking. If this fails, the
-        # failure shows up, and is reported, when the first sentence is spoken.
+        # failure shows up, and is handled, when the first sentence is spoken.
         warm_up = asyncio.create_task(speech.warm_up())
         warm_up.add_done_callback(lambda task: task.cancelled() or task.exception())
 
@@ -276,7 +282,6 @@ class Session:
             await self._answer(turn_id, text, speech)
         finally:
             warm_up.cancel()
-            await speech.close()
 
     async def _answer(self, turn_id: str, text: str, tts: SpeechStream | None = None) -> None:
         if is_local_command(text):
@@ -370,33 +375,51 @@ class Session:
                 async for piece in pieces:
                     yield piece
 
-        splitter = SentenceSplitter()
+        # A spoken reply starts at the first clause; a typed one keeps whole sentences.
+        splitter = SentenceSplitter(early_start=tts is not None)
         seq = 0
         async for piece in stream():
             for sentence in splitter.feed(piece):
-                await self._speak(turn_id, seq, sentence, tts)
+                tts = await self._speak(turn_id, seq, sentence, tts)
                 seq += 1
         for sentence in splitter.flush():
-            await self._speak(turn_id, seq, sentence, tts)
+            tts = await self._speak(turn_id, seq, sentence, tts)
             seq += 1
         if seq == 0:
             raise TurnError("empty_reply", "I have no answer for that. Please try again.")
         await self._send(Done(turn_id=turn_id))
 
-    async def _speak(self, turn_id: str, seq: int, sentence: str, tts: SpeechStream | None) -> None:
-        """Sends one sentence, followed by its audio when the turn is spoken."""
+    async def _speak(
+        self, turn_id: str, seq: int, sentence: str, tts: SpeechStream | None
+    ) -> SpeechStream | None:
+        """Sends one sentence, followed by its audio when the turn is spoken. Returns the
+        voice to use for the next sentence: None once the voice has failed, after which
+        sentences go out as text and the extension speaks them with the browser's voice."""
         if tts is None:
             await self._send(SpeakText(turn_id=turn_id, seq=seq, text=sentence))
-            return
-        await self._send(
-            SpeakText(turn_id=turn_id, seq=seq, text=sentence, audio=tts.output_format)
-        )
-        try:
-            async for chunk in tts.synthesize(sentence):
-                await self.ws.send_bytes(chunk)
-        except Exception as error:
-            log.exception("text-to-speech failed")
-            raise TurnError("tts_failed", "I could not produce speech for my answer.") from error
+            return None
+        for attempt in (1, 2):
+            sent_audio = False
+            await self._send(
+                SpeakText(turn_id=turn_id, seq=seq, text=sentence, audio=tts.output_format)
+            )
+            try:
+                async for chunk in tts.synthesize(sentence):
+                    await self.ws.send_bytes(chunk)
+                    sent_audio = True
+                return tts
+            except Exception:
+                log.exception("text-to-speech failed (attempt %d)", attempt)
+                await tts.close()
+                self._speech = None
+                if sent_audio or attempt == 2:
+                    break
+                # A connection kept from an earlier turn may have gone stale: open a
+                # fresh one and say the sentence again.
+                tts = self._speech = self.deps.text_to_speech().open_stream()
+        # The same sentence again, without audio: the extension's own voice takes over.
+        await self._send(SpeakText(turn_id=turn_id, seq=seq, text=sentence))
+        return None
 
     async def _request(self, turn_id: str, kind: str, request: BaseModel, wait: float) -> Any:
         """Sends `request` and waits for the extension's reply of type `kind`."""
@@ -533,6 +556,25 @@ class _SessionPage(PageAccess):
 
     async def ask_to_confirm(self, held: HeldAction, text: str) -> None:
         await self._session.ask_to_confirm(self._turn_id, held, text)
+
+
+def _explain(error: Exception) -> tuple[str, str]:
+    """A code and a spoken sentence for a failure nobody planned for. Model services
+    report quota and overload in their own ways; the status code or the name is enough."""
+    status = getattr(error, "code", None) or getattr(error, "status_code", None)
+    text = f"{type(error).__name__} {error}"
+    if status == 429 or "RESOURCE_EXHAUSTED" in text or "rate limit" in text.lower():
+        return (
+            "model_quota",
+            "The AI service says I have reached its limit for now. Please try again in a minute.",
+        )
+    if status in (500, 502, 503, 504) or "UNAVAILABLE" in text or "overloaded" in text.lower():
+        return "model_busy", "The AI service is busy right now. Please try again in a moment."
+    if isinstance(error, TimeoutError) or "timeout" in type(error).__name__.lower():
+        return "model_slow", "The AI service took too long to answer. Please try again."
+    if isinstance(error, ConnectionError | OSError):
+        return "no_network", "I could not reach the AI service. Please check the connection."
+    return "internal", "Something went wrong on my side. Please try again."
 
 
 def _origin_allowed(origin: str | None) -> bool:

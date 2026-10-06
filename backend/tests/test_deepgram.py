@@ -157,3 +157,20 @@ def test_a_turn_speaks_every_sentence_over_one_connection():
     assert len(fake.paths) == 1
     spoken = [m["text"] for m in fake.client_messages if m["type"] == "Speak"]
     assert spoken == ["One.", "Two."]
+
+
+def test_a_sentence_that_was_cut_off_does_not_leak_into_the_next():
+    async def scenario(url, fake):
+        stream = DeepgramTextToSpeech("secret-key", base_url=url).open_stream()
+        cut_off = stream.synthesize("A long sentence the user interrupts.")
+        first_chunk = await anext(cut_off)
+        await cut_off.aclose()
+        after = [chunk async for chunk in stream.synthesize("The next answer.")]
+        await stream.close()
+        return first_chunk, after
+
+    (first_chunk, after), fake = with_server(scenario)
+    assert first_chunk == b"\x01\x02" * 100
+    # The next sentence came whole, over a fresh connection.
+    assert after == [b"\x01\x02" * 100, b"\x03\x04" * 50]
+    assert len(fake.paths) == 2

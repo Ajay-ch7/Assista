@@ -109,7 +109,11 @@ test('local commands stay in the extension', async ({ context, openPanel }) => {
 
   expect(await ask(panel, 'slower please')).toEqual(['Slower.']);
   const stored = await panel.evaluate(() => chrome.storage.local.get('preferences'));
-  expect(stored.preferences).toEqual({ verbosity: 'brief', speed: 0.75 });
+  expect(stored.preferences).toEqual({
+    verbosity: 'brief',
+    speed: 0.75,
+    privateMode: false,
+  });
 
   expect(await ask(panel, 'spell Kaveri')).toEqual(['capital K, A, V, E, R, I']);
   await ask(panel, 'repeat that');
