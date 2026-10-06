@@ -5,12 +5,14 @@ import { DEFAULT_KEYS, HoldKeyMachine, attachHoldKey } from '../shared/holdKey';
 import {
   isAddressedTo,
   type Ack,
+  type ActionReply,
   type ScreenshotReply,
   type SnapshotReply,
   type ToWorker,
+  type ToolRequest,
 } from '../shared/messages';
 import { parseLocalCommand, type LocalCommand } from '../shared/localCommands';
-import type { AudioFormat, ServerMessage, Verbosity } from '../shared/protocol';
+import type { AudioFormat, ServerMessage, ToolCallMessage, Verbosity } from '../shared/protocol';
 import {
   DEFAULT_PREFERENCES,
   MAX_SPEED,
@@ -328,6 +330,9 @@ function onBackendMessage(msg: ServerMessage): void {
     case 'cue':
       void cues.play(msg.name);
       break;
+    case 'tool_call':
+      void runToolCall(msg);
+      break;
     default:
       console.warn(`Assista: ${msg.type} is not handled yet`);
   }
@@ -372,6 +377,51 @@ async function replyWithScreenshot(turn: string, ref?: string): Promise<void> {
     reply.ok
       ? { type: 'screenshot', turn_id: turn, image: reply.image, mime: reply.mime, ref }
       : { type: 'screenshot', turn_id: turn, image: null, ref, error: reply.error },
+  );
+}
+
+/** Asks the service worker to run one action tool. */
+async function runTool(tool: ToolRequest): Promise<ActionReply> {
+  try {
+    return await chrome.runtime.sendMessage<ToWorker, ActionReply>({
+      to: 'worker',
+      kind: 'run_tool',
+      tool,
+    });
+  } catch (error) {
+    return { ok: false, error: String(error) };
+  }
+}
+
+async function runToolCall(call: ToolCallMessage): Promise<void> {
+  // Only these fields of the backend's message are used; nothing else it sends can
+  // change how the action runs.
+  const tool: ToolRequest = {
+    name: call.name,
+    snapshotId: call.snapshot_id,
+    ref: call.ref,
+    args: call.args ?? {},
+  };
+  const reply = await runTool(tool);
+  if (reply.ok && tool.name === 'click' && reply.result.target?.role === 'link') {
+    void cues.play('link');
+  }
+  sendToolResult(call.turn_id, call.call_id, reply);
+}
+
+function sendToolResult(turn: string, callId: string, reply: ActionReply): void {
+  if (turn !== activeTurn) return;
+  socket.send(
+    reply.ok
+      ? { type: 'tool_result', turn_id: turn, call_id: callId, ok: true, result: reply.result }
+      : {
+          type: 'tool_result',
+          turn_id: turn,
+          call_id: callId,
+          ok: false,
+          error: reply.error,
+          result: reply.sensitive,
+        },
   );
 }
 

@@ -1,0 +1,219 @@
+// @vitest-environment jsdom
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ActionReply, ToolRequest } from '../shared/messages';
+import type { PageSnapshot } from '../shared/snapshot';
+import { runAction } from './actions';
+import { buildSnapshot } from './snapshot';
+
+let snapshot: PageSnapshot;
+
+function page(html: string): void {
+  document.body.innerHTML = html;
+  snapshot = buildSnapshot(document);
+}
+
+function refOf(name: string): string {
+  const node = snapshot.nodes.find((item) => item.name === name);
+  if (!node) throw new Error(`no node named ${name}`);
+  return node.ref;
+}
+
+/** Runs a tool against the current snapshot, with deferred work done at once. */
+function run(name: string, target?: string, args: Record<string, unknown> = {}): ActionReply {
+  const tool: ToolRequest = {
+    name,
+    snapshotId: snapshot.snapshot_id,
+    ref: target === undefined ? undefined : refOf(target),
+    args,
+  };
+  return runAction(tool, document, (work) => work());
+}
+
+beforeEach(() => {
+  document.body.innerHTML = '';
+});
+
+describe('click', () => {
+  it('clicks the element and says what it clicked', () => {
+    page('<button id="b">Add to cart</button>');
+    const clicked = vi.fn();
+    document.getElementById('b')!.addEventListener('click', clicked);
+    expect(run('click', 'Add to cart')).toEqual({
+      ok: true,
+      result: { action: 'click', target: { role: 'button', name: 'Add to cart' } },
+    });
+    expect(clicked).toHaveBeenCalledOnce();
+    expect(document.activeElement?.id).toBe('b');
+  });
+
+  it('ticks a checkbox', () => {
+    page('<label><input type="checkbox" id="c"> Gift wrap</label>');
+    run('click', 'Gift wrap');
+    expect((document.getElementById('c') as HTMLInputElement).checked).toBe(true);
+  });
+
+  it('refuses a disabled control', () => {
+    page('<button disabled>Pay</button>');
+    expect(run('click', 'Pay')).toEqual({ ok: false, error: 'disabled' });
+  });
+
+  it('replies before the click happens, because a click can unload the page', () => {
+    page('<a href="#next" id="a">Next page</a>');
+    const clicked = vi.fn();
+    document.getElementById('a')!.addEventListener('click', clicked);
+    let deferred: (() => void) | undefined;
+    const tool = {
+      name: 'click',
+      snapshotId: snapshot.snapshot_id,
+      ref: refOf('Next page'),
+      args: {},
+    };
+    const reply = runAction(tool, document, (work) => (deferred = work));
+    expect(reply.ok).toBe(true);
+    expect(clicked).not.toHaveBeenCalled();
+    deferred!();
+    expect(clicked).toHaveBeenCalledOnce();
+  });
+});
+
+describe('type', () => {
+  it('fills a field and fires the events a typing user would', () => {
+    page('<label>Full name <input id="n"></label>');
+    const field = document.getElementById('n') as HTMLInputElement;
+    const events: string[] = [];
+    field.addEventListener('input', () => events.push('input'));
+    field.addEventListener('change', () => events.push('change'));
+    expect(run('type', 'Full name', { text: 'Asha Rao' })).toEqual({
+      ok: true,
+      result: {
+        action: 'type',
+        target: { role: 'textbox', name: 'Full name' },
+        detail: 'Asha Rao',
+      },
+    });
+    expect(field.value).toBe('Asha Rao');
+    expect(events).toEqual(['input', 'change']);
+  });
+
+  it('fills a textarea and replaces what was there', () => {
+    page('<label>Address <textarea id="t">old</textarea></label>');
+    run('type', 'Address', { text: '12 Lake Road' });
+    expect((document.getElementById('t') as HTMLTextAreaElement).value).toBe('12 Lake Road');
+  });
+
+  it.each([
+    ['<label>Password <input type="password" id="f"></label>', 'Password'],
+    ['<label>One-time code <input id="f" autocomplete="one-time-code"></label>', 'One-time code'],
+    ['<label>Card number <input id="f"></label>', 'Card number'],
+    ['<label>PIN <input id="f"></label>', 'PIN'],
+  ])('never types into a sensitive field, and moves focus there instead', (html, name) => {
+    page(html);
+    const reply = run('type', name, { text: '493817' });
+    expect(reply).toEqual({ ok: false, error: 'sensitive_field', sensitive: { field: name } });
+    expect((document.getElementById('f') as HTMLInputElement).value).toBe('');
+    expect(document.activeElement?.id).toBe('f');
+  });
+
+  it('moves focus to a sensitive field when it is clicked', () => {
+    page('<label>Password <input type="password" id="f"></label>');
+    expect(run('click', 'Password')).toMatchObject({ ok: false, error: 'sensitive_field' });
+    expect(document.activeElement?.id).toBe('f');
+  });
+
+  it('refuses things that are not text fields, read-only fields and missing text', () => {
+    page(`<button>Go</button><label>Code <input readonly value="x"></label>
+          <label>Name <input></label>`);
+    expect(run('type', 'Go', { text: 'x' })).toEqual({ ok: false, error: 'not_a_text_field' });
+    expect(run('type', 'Code', { text: 'y' })).toEqual({ ok: false, error: 'disabled' });
+    expect(run('type', 'Name')).toEqual({ ok: false, error: 'missing_text' });
+  });
+});
+
+describe('select', () => {
+  const HTML = `<label>Delivery <select id="s">
+    <option value="std">Standard</option><option value="exp">Express delivery</option>
+  </select></label>`;
+
+  it('chooses an option by its text, part of its text or its value', () => {
+    for (const option of ['Express delivery', 'express', 'EXP']) {
+      page(HTML);
+      const reply = run('select', 'Delivery', { option });
+      expect(reply).toMatchObject({ ok: true, result: { detail: 'Express delivery' } });
+      expect((document.getElementById('s') as HTMLSelectElement).value).toBe('exp');
+    }
+  });
+
+  it('lists the options when none matches', () => {
+    page(HTML);
+    expect(run('select', 'Delivery', { option: 'Overnight' })).toEqual({
+      ok: false,
+      error: 'no_such_option: Standard | Express delivery',
+    });
+  });
+
+  it('refuses anything that is not a select', () => {
+    page('<label>Name <input></label>');
+    expect(run('select', 'Name', { option: 'x' })).toEqual({ ok: false, error: 'not_a_select' });
+  });
+});
+
+describe('scroll and back', () => {
+  it('scrolls by most of a screen and reports where it ended', () => {
+    page('<p>Text</p>');
+    const scrollBy = vi.spyOn(window, 'scrollBy').mockImplementation(() => undefined);
+    Object.defineProperty(document.documentElement, 'scrollHeight', {
+      value: 5000,
+      configurable: true,
+    });
+    Object.defineProperty(window, 'scrollY', { value: 600, configurable: true });
+    expect(run('scroll', undefined, { direction: 'down' })).toEqual({
+      ok: true,
+      result: { action: 'scroll', detail: 'down' },
+    });
+    expect(scrollBy).toHaveBeenCalledWith(0, window.innerHeight * 0.85);
+    Object.defineProperty(window, 'scrollY', { value: 5000, configurable: true });
+    expect(run('scroll', undefined, { direction: 'down' })).toMatchObject({
+      result: { detail: 'bottom of the page' },
+    });
+    expect(run('scroll', undefined, { direction: 'sideways' })).toEqual({
+      ok: false,
+      error: 'bad_direction',
+    });
+  });
+
+  it('goes back in history', () => {
+    page('<p>Text</p>');
+    const back = vi.spyOn(window.history, 'back').mockImplementation(() => undefined);
+    expect(run('go_back')).toEqual({ ok: true, result: { action: 'go_back' } });
+    expect(back).toHaveBeenCalledOnce();
+  });
+});
+
+describe('references', () => {
+  it('rejects a reference from an older snapshot', () => {
+    page('<button>Buy</button>');
+    const old = snapshot;
+    buildSnapshot(document);
+    const tool = { name: 'click', snapshotId: old.snapshot_id, ref: old.nodes[0].ref, args: {} };
+    expect(runAction(tool, document)).toEqual({ ok: false, error: 'stale_ref' });
+  });
+
+  it('rejects an element that has left the page, a missing reference and unknown tools', () => {
+    page('<button>Buy</button>');
+    const ref = refOf('Buy');
+    document.body.innerHTML = '';
+    const base = { snapshotId: snapshot.snapshot_id, args: {} };
+    expect(runAction({ ...base, name: 'click', ref }, document)).toEqual({
+      ok: false,
+      error: 'stale_ref',
+    });
+    expect(runAction({ ...base, name: 'click' }, document)).toEqual({
+      ok: false,
+      error: 'missing_ref',
+    });
+    expect(runAction({ ...base, name: 'launch', ref }, document)).toEqual({
+      ok: false,
+      error: 'unknown_tool',
+    });
+  });
+});

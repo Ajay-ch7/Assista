@@ -9,7 +9,8 @@ export type ToWorker =
   | { to: 'worker'; kind: 'talk_key'; phase: TalkPhase }
   | { to: 'worker'; kind: 'stop_key' }
   | { to: 'worker'; kind: 'get_snapshot' }
-  | { to: 'worker'; kind: 'get_screenshot'; ref?: string };
+  | { to: 'worker'; kind: 'get_screenshot'; ref?: string }
+  | { to: 'worker'; kind: 'run_tool'; tool: ToolRequest };
 
 export type ToPanel =
   | { to: 'panel'; kind: 'talk_key'; phase: TalkPhase }
@@ -19,7 +20,8 @@ export type ToPanel =
 export type ToContent =
   | { to: 'content'; kind: 'build_snapshot' }
   | { to: 'content'; kind: 'prepare_capture'; ref?: string }
-  | { to: 'content'; kind: 'end_capture' };
+  | { to: 'content'; kind: 'end_capture' }
+  | { to: 'content'; kind: 'run_action'; tool: ToolRequest };
 
 export type Ack = { ok: true } | { ok: false; error: string };
 export type SnapshotReply = { ok: true; snapshot: PageSnapshot } | { ok: false; error: string };
@@ -42,6 +44,32 @@ export type CaptureReply = ({ ok: true } & CaptureFrame) | { ok: false; error: s
 /** A screenshot as base64 image data. */
 export type ScreenshotReply =
   { ok: true; image: string; mime: string } | { ok: false; error: string };
+
+/** One action tool to run, as the backend's tool_call asked for it. */
+export interface ToolRequest {
+  name: string;
+  /** The snapshot `ref` belongs to. An action on an older snapshot is refused. */
+  snapshotId: string;
+  ref?: string;
+  args: Record<string, unknown>;
+}
+
+/** What an action did, for the model's next step and for the action log. */
+export interface ActionDone {
+  action: string;
+  target?: { role: string; name: string };
+  /** The text typed, the option chosen, or where a scroll ended. */
+  detail?: string;
+}
+
+export type ActionReply =
+  | { ok: true; result: ActionDone }
+  | {
+      ok: false;
+      error: string;
+      /** The field is sensitive: focus was moved to it, and the user must type it. */
+      sensitive?: { field: string };
+    };
 
 export function isAddressedTo<T extends 'worker' | 'panel' | 'content'>(
   msg: unknown,
