@@ -101,21 +101,6 @@ def test_the_router_runs_on_the_router_model_and_the_reader_on_the_main_model():
     assert result.speech[0].startswith("This page is titled")
 
 
-@pytest.mark.parametrize(
-    ("text", "reply"),
-    [
-        ("tell me when the price drops", "I can't watch pages for changes yet."),
-    ],
-)
-def test_specialists_from_later_phases_say_what_is_not_possible_yet(text, reply):
-    llm = MockLLM()
-    with session_with(llm) as client:
-        result = client.ask(text)
-    assert reply in " ".join(result.speech)
-    assert result.types[-1] == "done"
-    assert llm.specialist_requests == []
-
-
 def test_cost_questions_go_to_the_advisor():
     llm = MockLLM()
     with session_with(llm) as client:

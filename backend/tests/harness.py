@@ -188,6 +188,8 @@ class FakePage:
         self.asked = False
         self.after_submit: dict[str, Any] | None = None
         """The page shown once a gated control has been pressed."""
+        self.watches: list[dict[str, Any]] = []
+        """The watches set, as the extension would summarise them."""
 
     def snapshot(self) -> dict[str, Any]:
         self._version += 1
@@ -203,6 +205,16 @@ class FakePage:
         self.calls.append(call)
         self.held, self.asked = None, False
         name, args = call["name"], call.get("args", {})
+        if name == "list_watches":
+            return {"ok": True, "result": {"action": name, "watches": list(self.watches)}}
+        if name == "cancel_watch":
+            query = str(args.get("query") or "").lower()
+            gone = [w for w in self.watches if query in w["label"].lower()]
+            if not gone:
+                return {"ok": False, "error": "no_such_watch"}
+            self.watches = [w for w in self.watches if w not in gone]
+            detail = ", ".join(w["label"] for w in gone)
+            return {"ok": True, "result": {"action": name, "detail": detail, "watches": gone}}
         if name in ("go_back", "switch_tab", "open_url", "web_search") or (
             name == "scroll" and "ref" not in call
         ):
@@ -219,6 +231,26 @@ class FakePage:
         target = {"role": node["role"], "name": node.get("name", "")}
         if node.get("sensitive"):
             return {"ok": False, "error": "sensitive_field", "result": {"field": target["name"]}}
+        if name == "set_watch":
+            words = {
+                "decreases": "goes down",
+                "increases": "goes up",
+                "below": f"goes below {args.get('value')}",
+                "above": f"goes above {args.get('value')}",
+                "contains": f"says {args.get('value')}",
+            }
+            summary = {
+                "id": f"w{len(self.calls)}",
+                "label": args.get("label") or target["name"],
+                "page": self._snapshot.get("title", ""),
+                "condition": words.get(args.get("condition"), "changes"),
+                "value": node.get("text") or node.get("value") or target["name"],
+            }
+            self.watches.append(summary)
+            return {
+                "ok": True,
+                "result": {"action": name, "detail": summary["value"], "watches": [summary]},
+            }
         if name == "type":
             node["value"] = args.get("text", "")
             return {

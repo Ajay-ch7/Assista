@@ -19,21 +19,11 @@ from app.agents.document import DocumentReader, document_context
 from app.agents.reader import Reader
 from app.agents.router import SpecialistName, route
 from app.agents.vision import PageVision, Vision
+from app.agents.watcher import Watcher
 from app.errors import PAGE_UNREADABLE, TurnError
 from app.llm.base import LLMClient
 
 log = logging.getLogger("assista.team")
-
-
-class NotYet(Specialist):
-    """Stands in for a specialist that a later phase builds."""
-
-    def __init__(self, name: str, reply: str) -> None:
-        self.name = name  # type: ignore[misc]
-        self.reply = reply
-
-    async def respond(self, ctx: TurnContext, out: SpecialistOutput) -> AsyncIterator[str]:
-        yield f"CONFIDENCE: high\n{self.reply}"
 
 
 class Team:
@@ -50,7 +40,7 @@ class Team:
             "advisor": Advisor(llm, model),
             "vision": Vision(llm, model),
             "actor": Actor(llm, model),
-            "watcher": NotYet("watcher", "I can't watch pages for changes yet."),
+            "watcher": Watcher(llm, model),
         }
 
     def pick(self, name: SpecialistName, ctx: TurnContext) -> Specialist:

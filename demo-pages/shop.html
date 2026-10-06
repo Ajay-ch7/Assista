@@ -82,7 +82,7 @@
         />
         <div>
           <h1>Trail Backpack 30L</h1>
-          <p class="price">Price: 4,499 rupees</p>
+          <p class="price" id="price">Price: 4,499 rupees</p>
           <p>
             A light pack for day hikes, with a rain cover and a padded back. In stock. Read the
             <a href="#returns">returns policy</a> before you buy.
@@ -145,6 +145,10 @@
     </footer>
     <script>
       // Adding to the cart only updates the count in the menu; the demo needs no server.
+      // A price set here survives a reload, so a test can stand in for the shop changing it.
+      const newPrice = localStorage.getItem('demo-price');
+      if (newPrice) document.getElementById('price').textContent = `Price: ${newPrice} rupees`;
+
       let inCart = 0;
       document.getElementById('add-to-cart').addEventListener('click', () => {
         inCart += 1;

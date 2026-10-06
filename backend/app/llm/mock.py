@@ -19,6 +19,7 @@ from app.llm.base import (
 )
 from app.llm.mock_actor import act
 from app.llm.mock_advisor import advise
+from app.llm.mock_watcher import watch
 
 _PAGE_DATA = re.compile(r"<page_data_\w+>\n(.*)\n</page_data_\w+>", re.DOTALL)
 # Vision's system prompts contain this role line (app/agents/vision.py). See _look.
@@ -28,11 +29,13 @@ _VISION_ROLE = "\nYou are Vision."
 _ACTOR_ROLE = "\nYou are the Actor."
 # And the Advisor's this one (app/agents/advisor.py).
 _ADVISOR_ROLE = "\nYou are the Advisor."
+# And the Watcher's this one (app/agents/watcher.py).
+_WATCHER_ROLE = "\nYou are the Watcher."
 
 # Router requests open with this (app/agents/router.py). The mock routes them by keyword.
 _ROUTER_SYSTEM = "You route requests"
 _ROUTES = [
-    ("watcher", r"\b(watch|notify|tell me when|let me know when|alert me)\b"),
+    ("watcher", r"\b(watch|watching|watches|notify|tell me when|let me know when|alert me)\b"),
     (
         "vision",
         r"\b(image|images|photo|photos|picture|pictures|logo|chart|graph|looks? like|"
@@ -74,6 +77,10 @@ class MockLLM(LLMClient):
             return
         if _ACTOR_ROLE in request.system:
             for event in act(request):
+                yield event
+            return
+        if _WATCHER_ROLE in request.system:
+            for event in watch(request):
                 yield event
             return
         if _ADVISOR_ROLE in request.system:
