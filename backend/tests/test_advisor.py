@@ -80,7 +80,7 @@ def test_the_box_the_page_ticked_is_announced_by_code_after_the_answer():
     with session_with(MockLLM()) as client:
         result = client.ask("what is the total?", snapshot=CHECKOUT_SNAPSHOT)
     assert result.speech[-2:] == [
-        "Watch out: the page ticked Add Protection Plan for 299 rupees for you.",
+        "Watch out: Add Protection Plan for 299 rupees was already ticked when the page opened.",
         "Untick it if you don't want it.",
     ]
 
@@ -93,7 +93,7 @@ def test_the_exit_check_hidden_fee_pre_ticked_box_and_true_total():
     speech = " ".join(result.speech)
     assert "You will pay 4,946 rupees in total." in speech
     assert "Easy to miss, outside the order summary: Prices include a convenience fee" in speech
-    assert "the page ticked Add Protection Plan for 299 rupees for you" in speech
+    assert "Add Protection Plan for 299 rupees was already ticked when the page opened" in speech
 
 
 def test_the_warning_is_spoken_even_when_the_model_says_nothing_of_it():
@@ -101,7 +101,7 @@ def test_the_warning_is_spoken_even_when_the_model_says_nothing_of_it():
     with session_with(llm) as client:
         result = client.ask("what is the total?", snapshot=CHECKOUT_SNAPSHOT)
     assert result.speech[0] == "You will pay 4,946 rupees."
-    assert result.speech[1].startswith("Watch out: the page ticked Add Protection Plan")
+    assert result.speech[1].startswith("Watch out: Add Protection Plan")
 
 
 def test_several_ticked_boxes_are_named_together():
@@ -109,7 +109,8 @@ def test_several_ticked_boxes_are_named_together():
     page["rules"]["preticked"] = ["e7", "e8"]
     snapshot = PageSnapshot.model_validate(page)
     assert preticked_warning(snapshot) == (
-        "Watch out: the page ticked 2 boxes for you: Add Protection Plan for 299 rupees and "
+        "Watch out: 2 boxes were already ticked when the page opened: Add Protection Plan for 299 "
+        "rupees and "
         "Email me about new arrivals. Untick any you don't want."
     )
 
@@ -140,7 +141,7 @@ def test_pressure_and_shaming_wording_are_pointed_out():
     speech = " ".join(result.speech)
     assert "Only 2 left in stock!" in speech
     assert "No thanks, I don't care about protecting my gear" in speech
-    assert "Watch out: the page ticked Add Protection Plan" in speech
+    assert "Watch out: Add Protection Plan for 299 rupees was already ticked" in speech
 
 
 # Fine print (F15)

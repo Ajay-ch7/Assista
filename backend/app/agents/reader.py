@@ -25,6 +25,9 @@ Outdoor" or "This is a news article in The Daily Post".
 price, the article's subject, or the form to fill in.
 - Then, if there is room, the main sections by their headings, and the one or two main \
 things the user can do here.
+- Mention choices already made on the page, such as boxes that are ticked and options \
+that are chosen, for example "This order contains a gift is ticked." Boxes listed under \
+rules.preticked were already ticked when the page opened; say so.
 - If clutter_removed in the flags is above zero, end by saying in a few words that you \
 skipped some ads, banners or repeated menus.
 

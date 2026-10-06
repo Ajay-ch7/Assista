@@ -264,3 +264,33 @@ describe('resolveRef', () => {
     expect(() => resolveRef(snapshot.snapshot_id, 'e1')).toThrow(StaleRefError);
   });
 });
+
+describe('buildSnapshot: boxes drawn by the page', () => {
+  // Shops often hide the real checkbox and draw their own; the label is what is seen.
+  it.each([
+    ['opacity: 0', 'position: absolute; opacity: 0;'],
+    ['display: none', 'display: none;'],
+    ['a 1px clip', 'position: absolute; clip: rect(0, 0, 0, 0);'],
+  ])('keeps a box hidden with %s when its label is visible', (_, style) => {
+    const snapshot = snapshotOf(`
+      <style>.a-checkbox input { ${style} }</style>
+      <div class="a-checkbox"><label><input type="checkbox" checked><i class="a-icon"></i>
+        <span class="a-label">This order contains a gift</span></label></div>
+      <label><input type="radio" name="w" style="${style}"> Gift wrap</label>
+      <button>Proceed to Buy</button>`);
+    expect(snapshot.nodes.map((n) => [n.role, n.name, n.state?.checked])).toEqual([
+      ['checkbox', 'This order contains a gift', true],
+      ['radio', 'Gift wrap', false],
+      ['button', 'Proceed to Buy', undefined],
+    ]);
+    expect(snapshot.rules.preticked).toEqual([snapshot.nodes[0].ref]);
+  });
+
+  it('still drops a hidden box whose label is hidden too, or that has no label', () => {
+    const snapshot = snapshotOf(`
+      <label style="display: none"><input type="checkbox" checked> Subscribe me</label>
+      <input type="checkbox" style="opacity: 0" aria-label="Agree to everything">
+      <div style="opacity: 0"><label><input type="checkbox"> Share my data</label></div>`);
+    expect(snapshot.nodes).toEqual([]);
+  });
+});

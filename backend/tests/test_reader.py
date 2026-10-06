@@ -112,6 +112,8 @@ def test_the_reader_is_told_how_to_orient_and_to_admit_missing_answers():
     system = system.system
     assert "the site and the kind of page" in system
     assert "clutter_removed" in system
+    assert "boxes that are ticked and options that are chosen" in system
+    assert "already ticked when the page opened" in system
     assert "If the page does not contain the answer, say so plainly" in system
     assert "CONFIDENCE: high" in system
 

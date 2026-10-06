@@ -41,6 +41,18 @@
         color: #b00020;
         font-weight: 700;
       }
+      /* The real box is hidden and a drawn one shown, as many shops do. */
+      .drawn input {
+        position: absolute;
+        opacity: 0;
+      }
+      .drawn .box::before {
+        content: '\2610';
+        margin-right: 0.4rem;
+      }
+      .drawn input:checked + .box::before {
+        content: '\2611';
+      }
       a.button {
         display: inline-block;
         padding: 0.5rem 1rem;
@@ -79,9 +91,9 @@
       </table>
 
       <p>
-        <label
-          ><input type="checkbox" id="protection" checked /> Add Protection Plan for 299
-          rupees</label
+        <label class="drawn"
+          ><input type="checkbox" id="protection" checked /><span class="box"></span>Add
+          Protection Plan for 299 rupees</label
         >
       </p>
       <p>

@@ -1,5 +1,5 @@
 // Phase 4: advising and reading, through the real extension and the real backend (with the
-// mock model). Facts the user must not miss, such as a box the page ticked for them, are
+// mock model). Facts the user must not miss, such as a box ticked before they touched it, are
 // found by code in the extension and announced by code in the backend.
 
 import { ask, demoUrl, expect, of, recordedPanel, test } from './fixtures';
@@ -68,7 +68,7 @@ test('exit check: the hidden fee and the pre-ticked box are announced, with the 
     'Easy to miss, outside the order summary: Prices include a convenience fee of 49 rupees.',
   );
   expect(speech).toContain(
-    'Watch out: the page ticked Add Protection Plan for 299 rupees for you.',
+    'Watch out: Add Protection Plan for 299 rupees was already ticked when the page opened.',
   );
 
   // Unticked by the user: the total drops, and the box is no longer called out.

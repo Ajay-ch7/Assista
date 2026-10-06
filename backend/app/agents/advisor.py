@@ -70,9 +70,12 @@ names its sections.
 - If you find no red flags, say so. Report only what the text says. If the terms seem \
 to stop partway, say you may not have seen all of them."""
 
-PRETICKED_ONE = "Watch out: the page ticked {box} for you. Untick it if you don't want it."
+PRETICKED_ONE = (
+    "Watch out: {box} was already ticked when the page opened. Untick it if you don't want it."
+)
 PRETICKED_MANY = (
-    "Watch out: the page ticked {count} boxes for you: {boxes}. Untick any you don't want."
+    "Watch out: {count} boxes were already ticked when the page opened: {boxes}. Untick any "
+    "you don't want."
 )
 
 
@@ -110,7 +113,7 @@ def rules_note(snapshot: PageSnapshot) -> str:
 
 
 def preticked_warning(snapshot: PageSnapshot) -> str:
-    """Names every box the page ticked for the user, from the page as it is."""
+    """Names every box that was ticked before the user touched it, from the page as it is."""
     names = {node.ref: node.name for node in snapshot.nodes}
     boxes = [names.get(ref) or "a box with no label" for ref in snapshot.rules.preticked]
     if not boxes:

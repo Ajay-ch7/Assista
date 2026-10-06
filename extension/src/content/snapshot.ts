@@ -270,7 +270,7 @@ function visit(el: Element, inText: boolean, build: Build): void {
   if (el.getAttribute('aria-hidden') === 'true') return;
   if (tag === 'input' && (el as HTMLInputElement).type === 'hidden') return;
   if (isInClosedDetails(el)) return;
-  if (isHidden(el, build)) {
+  if (isHidden(el, build) && !isDrawnByPage(el, build)) {
     if (/\S/.test(el.textContent ?? '')) build.hiddenRemoved++;
     return;
   }
@@ -335,6 +335,28 @@ function isHidden(el: Element, build: Build): boolean {
     build.hiddenCache.set(el, hidden);
   }
   return hidden;
+}
+
+/**
+ * A native checkbox or radio button that the page hides in order to draw its own in its
+ * place. The user sees and clicks its label, so the box is kept, named by that label. A
+ * box whose labels are all hidden too is not.
+ */
+function isDrawnByPage(el: Element, build: Build): boolean {
+  if (el.localName !== 'input') return false;
+  const input = el as HTMLInputElement;
+  if (input.type !== 'checkbox' && input.type !== 'radio') return false;
+  return Array.from(input.labels ?? []).some(
+    (label) => isShown(label, build) && visibleText(label, build) !== '',
+  );
+}
+
+/** True when neither `el` nor any of its ancestors is hidden. */
+function isShown(el: Element, build: Build): boolean {
+  for (let node: Element | null = el; node; node = node.parentElement) {
+    if (isHidden(node, build) || node.getAttribute('aria-hidden') === 'true') return false;
+  }
+  return true;
 }
 
 function isInClosedDetails(el: Element): boolean {
