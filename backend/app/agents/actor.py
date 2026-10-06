@@ -117,8 +117,8 @@ _CLAIM = re.compile(
     re.IGNORECASE,
 )
 
-_ASKS_TO_TYPE = re.compile(r"(type|enter|key in|fill in)")
-_PRIVATE_WORDS = re.compile(r"(sensitive|private|password|passcode|pin|code|card)")
+_ASKS_TO_TYPE = re.compile(r"\b(type|enter|key in|fill in)\b")
+_PRIVATE_WORDS = re.compile(r"\b(sensitive|private|password|passcode|pin|code|card)\b")
 
 _VALUE_ROLES = ("textbox", "searchbox", "combobox", "listbox", "spinbutton", "slider")
 _TOTAL = re.compile(r"\btotal\b", re.IGNORECASE)
